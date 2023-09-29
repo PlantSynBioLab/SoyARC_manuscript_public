@@ -1,0 +1,35 @@
+---
+title: "Create a similarity table for manuscript"
+author: "Deisiany"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+```
+
+```{r read AFB phytozome BLAST information}
+AFB_similarity <- readxl::read_xls("AFB_input/AFB_blastp_job_601606.xls")
+AFB_similarity
+
+# Also in this case we do not need the A. thaliana genes in Protein columns since we want to compare the similarity of other genes to it. 
+AFB_similarity2 <- AFB_similarity[-c(1:28),]
+AFB_similarity2
+
+# Now we can select the columns that we queried for, the protein IDs and its % identity. Then we can tranform this into a matrix
+AFB_similarity2 <- AFB_similarity2[,c(2,5,8, 18)]
+AFB_similarity2
+
+AFB_similarity2$`Query ID` <- sub("AT1G12820.1", "AtAFB3",  AFB_similarity2$`Query ID`) %>% sub( "AT3G62980.1", "AtTIR1", .) %>% 
+  sub( "AT4G24390.1", "AtAFB4", .) %>% sub( "AT2G39940.1", "AtCOI1", .) %>% sub( "AT3G26810.1", "AtAFB2", .) %>% sub( "AT4G03190.1", "AtAFB1", .) %>% sub( "AT5G49980.1", "AtAFB5", .)
+
+AFB_similarity3 <- AFB_similarity2[-c(96:239),]
+
+AFB_similarity3 <- AFB_similarity3 %>% pivot_wider(., names_from = `Query ID`, values_from = `% identity`,  values_fn = ~mean(.x, na.rm = TRUE)) 
+write_excel_csv(AFB_similarity3, "AFB_input/Similarity_AFB.xls")
+
+```
+

@@ -1,0 +1,11 @@
+Galaxy81-Salmon_quant_on_Soy_IBMQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy87-Salmon_quant_on_Soy_hypocotylQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy88-Salmon_quant_on_Soy_CotyledonQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy89-Salmon_quant_on_SAM_38DQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy79-Salmon_quant_on_SoyAMQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy80-Salmon_quant_on_Soy_OFQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy82-Salmon_quant_on_Soy_IAMQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy83-Salmon_quant_on_SAM_6DQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy84-Salmon_quant_on_SAM_17DQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy85-Salmon_quant_on_Root_tipQuantification.tabular filter=lfs diff=lfs merge=lfs -text
+Galaxy86-Salmon_quant_on_Soy_CallusQuantification.tabular filter=lfs diff=lfs merge=lfs -text

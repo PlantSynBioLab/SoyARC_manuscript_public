@@ -1,0 +1,765 @@
+---
+title: "Manuscript table1"
+author: "Deisiany"
+date: "2023-09-19"
+output:
+  word_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(heatmaply)
+library(magrittr) #for lots of pipes
+library(ggplot2)
+library(pheatmap)
+library(devtools)
+library(ggrepel)
+library(sp)
+
+```
+
+
+# Table 1
+
+```{r}
+# Load TIR1/AFB1, Aux/IAAs, and ARFs so we can bind all together.
+TIR <- read.csv("../final_trees/AFB_input/2023_0919_AFB_Gm_ortholog.csv")
+
+
+IAA <- read.csv("../final_trees/IAA_input/IAA_Gm_ortholog.csv")
+IAA2 <- read.csv("../final_trees/IAA_input/LABELS2_20230917.csv") %>% .[30:90, ]
+IAA2 <- IAA2 %>% select(tair_locus, ensembl_gene_id, Class)
+
+IAA_ortho <- merge(IAA, IAA2, by = "tair_locus", all = TRUE)
+IAA_ortho <- IAA_ortho %>% rename(`Gene ID` = ensembl_gene_id.x,
+                     `Transcript ID` = tair_locus,
+                     Orthology = ortholog_name,
+                     `Class/Clade` = Class) %>% 
+  select(`Transcript ID`, Orthology, `Class/Clade`) 
+IAA_ortho$Family <- "IAA"
+
+
+expression_data <- read_csv("FINAL_manuscript_gene_INFO.csv") %>% select(-c(Average_Expression, `...22`))
+
+
+comb_expr_df <- merge(IAA_ortho, expression_data, by.x = "Transcript ID", by.y = "tair_locus", all =TRUE)
+
+comb_expr_df <- comb_expr_df %>% mutate(Class = coalesce(`Class/Clade`, class))
+
+comb_expr_df <- comb_expr_df %>% 
+  select(-c(class, `Class/Clade`, Orthology, Family.x))
+
+# populate NA's in class in accordance to their ensembl gene ID. if the same ID they belong to the same class
+comb_expr_df2 <- comb_expr_df %>%
+  group_by(ensembl_gene_id) %>%
+  mutate(Class = if (all(is.na(Class))) NA else na.omit(Class)) %>%
+  ungroup()
+
+
+# separate Class into Class and Clade
+comb_expr_df2 <- comb_expr_df2 %>% separate(Class, c('Class', 'Clade'),sep = " - ")
+
+# Now combine TIR df to get their new clades.
+df <- merge(comb_expr_df2, TIR, by.x = "ensembl_gene_id", by.y = "ensembl_gene_id", all = TRUE)
+
+df <- df %>% mutate(Clade = coalesce(Clade.x, Clade.y))
+
+df <- df %>% select(-c(Clade.x, Clade.y, class, tair_locus, ortholog_name, name.x, name.y)) %>% rename(Orthology = ortholog_number)
+
+df <- df %>% 
+  group_by(ensembl_gene_id) %>% 
+  mutate(Clade = if(all(is.na(Clade))) NA else na.omit(Clade)) %>% 
+  ungroup()
+
+# I can add clades to ARFs as I have not saved that as csv file when I built trees. 
+df <- df %>% mutate(Clade = ifelse(grepl("ARF", .$Family.y) & grepl("A", .$Class), "II",
+                            ifelse(grepl("ARF", .$Family.y) & grepl("B", .$Class), "I",
+                                   ifelse(grepl("ARF", .$Family.y) & grepl("C", .$Class), "III", Clade))))
+
+
+
+df2 <-
+  df %>% mutate(Class = ifelse(grepl("Glyma.02G218100", .$ensembl_gene_id), "A", Class),
+                Clade =
+                  ifelse(grepl("Glyma.02G218100", .$ensembl_gene_id), "I", Clade))
+
+
+df2 <- df2 %>% rename(Family = Family.y, `Gene ID` = ensembl_gene_id) %>% drop_na()
+
+# save Table 1 for manuscript
+df2 %>% select(`Gene ID`, Orthology, `Transcript ID`, Class, Clade, Family) %>% arrange(Family, Clade, Class, Orthology) %>% write_csv("Table1.csv")
+
+# write_csv(df2, "20230919_expression_heatmap.csv")
+```
+
+
+# Heatmap
+
+```{r Save pheatmap function}
+# Source:
+# https://stackoverflow.com/questions/43051525/how-to-draw-pheatmap-plot-to-screen-and-also-save-to-file
+save_pheatmap_pdf <- function(x, filename, width=7, height=4) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   pdf(filename, width=width, height=height)
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+
+# https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+
+```
+
+```{r}
+# Make a heatmap label by uniting orthology column and gene ID column
+heatmap_df <- df2 %>% 
+  relocate(`Gene ID`, .after = `Transcript ID`) %>%  
+  unite("heatmap_label", `Gene ID`:Orthology, sep = "|", remove = TRUE)
+
+
+# Genes with an median expression across tissues that are less than 2 TPM, will be excluded from downtream analysis
+heatmap_df2 <- heatmap_df %>% 
+  mutate(expr_median = round(apply(heatmap_df[,c(4:17)], 1, median), digits = 4)) %>% 
+  subset(., expr_median>= 2) %>% dplyr::filter(., Class != "COI1")
+
+ # we kept 133 genes for downstream normalization
+
+```
+
+
+# Normalization by transcript
+
+```{r}
+Expr_data_Norm <- heatmap_df2 %>% relocate(c(Class, Clade), .after = Family) %>% select(-expr_median)
+
+# Normalize data by performing a z-score transformation on selected columns.
+
+# Iterate through each row of the 'Expr_data_Norm' data frame.
+for (j in 1:nrow(Expr_data_Norm)) {
+  # Iterate through columns starting from the 6th column to the last column.
+for (i in 6:ncol(Expr_data_Norm)) { 
+  
+  # Calculate the z-score normalization for each cell in the data frame.
+    # 1. Subtract the mean of the selected row (columns 6 to the last column).
+    # 2. Divide by the standard deviation of the selected row.
+  Expr_data_Norm[j,i]<- 
+    (Expr_data_Norm[j,i]-rowMeans(Expr_data_Norm[j,6:ncol(Expr_data_Norm)]))/
+    sd(Expr_data_Norm[j,6:ncol(Expr_data_Norm)]) 
+}
+}
+
+Expr_data_Norm <-Expr_data_Norm %>% drop_na() %>% column_to_rownames(., var = "heatmap_label")
+
+```
+
+# Build heatmap with normalized data
+```{r height = 12, width = 9}
+
+# Specify colors
+Class_df1_colors = list(Family = c(ARF = "Purple", IAA = "yellow", `AFB/TIR1`="lightblue"), Class = c(A="purple", B="lightseagreen", C="orange", TIR1="green", `AFB2/3`="blue", `AFB4/5`="yellow", COI1="pink", AFB6="pink2"))
+
+
+pheatmap::pheatmap(mat = Expr_data_Norm[,5:18],  annotation_row = Expr_data_Norm[,c(2,3)], 
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cutree_cols = 4,
+         cellheight = 3,  na_col = "black",
+         clustering_distance_rows = "euclidean",
+         main = "Expression analysis") 
+
+(expr_analysis <- pheatmap::pheatmap(mat = Expr_data_Norm[,5:18],  annotation_row = Expr_data_Norm[,c(2,3)], annotation_colors = Class_df1_colors[1],
+         fontsize = 6, 
+         fontsize_row = 5,
+         cellwidth = 6,
+         cellheight = 5, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300, 
+         cutree_rows = 6, 
+         # main = "Expression analysis - normalized by transcripts",
+        color = c("grey80", "white", "mistyrose2", "lightpink", "lightblue", "turquoise", "lightslateblue")))
+
+save_pheatmap_pdf(expr_analysis, "20230926_FINAL_NORM_by_Transcript.pdf", height = 12, width = 9)
+
+```
+
+Z-score normalization standardizes the data such that the mean of each row becomes 0 and the standard deviation becomes 1. The resulting values can be positive or negative and represent how many standard deviations a data point is from the mean of its row.
+
+In the context of z-score normalization:
+
+Values close to 0 represent gene expression levels similar to the mean of their respective rows.
+Negative values represent gene expression levels below the mean of their respective rows.
+Positive values represent gene expression levels above the mean of their respective rows.
+
+So, in your heatmap, the -1 represents genes that have expression levels approximately 1 standard deviation below the mean of their respective rows. 
+
+These genes are relatively lower in expression compared to the mean expression of those genes across the samples or conditions under analysis.
+
+
+# Principal component analysis
+Using the full data set in which data median expression was greater than 2.
+In our PCA we are not using the normalized data. That is beacause we are already transforming our data once by using scale = true, which is known to change the range of the data whereas normalized changes its shape distribution.
+
+
+```{r}
+pca_data <- heatmap_df2 %>% relocate(c(Class, Clade), .after = Family) %>% select(-expr_median)
+
+
+
+# for analysis with all tissues 
+pca <- prcomp(pca_data[, -(1:5)], 
+              scale. = T, center = T)
+summary(pca)
+
+factoextra::fviz_eig(pca, main = "Principal component variances of the 14 tissues")
+
+ggsave("20230927_PCscreePlot_allTissues.png", dpi = 1000, width = 10, height = 8)
+
+```
+
+## PC1 and PC2 for all 14 tissues
+
+```{r}
+Family <- pca_data$Family
+
+# extract the loading so we can change the arrows more easily
+PCA_loadings <- data.frame(Variables=rownames(pca$rotation), pca$rotation)
+
+
+comb_pca_df <- cbind(pca_data, pca$x[, 1:4])
+
+```
+ 
+### PC1 and PC2 outside ellipse labels for the 14 tissues
+```{r}
+PC1_2all <- ggbiplot::ggbiplot(pca, obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Family, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE, ellipse.prob = .70)
+    
+
+# Extract components so we can select out 
+PC1_2all$data
+build <- ggplot_build(PC1_2all)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(comb_pca_df$PC1, 
+                               comb_pca_df$PC2, 
+                               as.factor(comb_pca_df$Family), levels=c(.7, .9))
+# add geom_point with ellipses point 
+
+ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+
+ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+
+ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+
+# Find which points are outside (!) the ellipse, and add this to the data
+library(sp)
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+) 
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+# as.logical(point..) equals to TRUE indicated points are inside ellipses
+
+# Combining data points for labeling
+transcript_expr_logic <- cbind(comb_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+
+
+expr_logic <- transcript_expr_logic %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+                                              Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
+                                              Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
+  mutate(in_ell = coalesce(in_ell, "FALSE"))
+
+expr_logic[which(expr_logic$in_ell == FALSE),]
+
+
+```
+
+```{r}
+PC1_2all + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8.75), yend=(PC2*8.75)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC1*8.75), #add the tissue names to it manually
+             y=(PCA_loadings$PC2*8.75), 
+             label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw()+
+   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  ggrepel::geom_text_repel(data = expr_logic %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC1, PC2, label=sub(".*\\|", "", heatmap_label)), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+  labs(color = "Class") + 
+  theme_bw()
+
+ggsave("20230927_PC1_2_allTissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20230927_PC1_2_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+
+```
+
+### PC2 and PC3 outside ellipse labels for the 14 tissues
+```{r}
+PC2_3all <- ggbiplot::ggbiplot(pca, obs.scale = 1, var.scale = .5, choices = c(2, 3),
+                             varname.adjust = 3,
+                            groups = Family, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE, ellipse.prob = .70)
+    
+
+# Extract components so we can select out 
+PC2_3all$data
+build <- ggplot_build(PC2_3all)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(comb_pca_df$PC2, 
+                               comb_pca_df$PC3, 
+                               as.factor(comb_pca_df$Family), levels=c(.7, .9))
+# add geom_point with ellipses point 
+
+ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+
+ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+
+ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+
+# Find which points are outside (!) the ellipse, and add this to the data
+
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+) 
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+# as.logical(point..) equals to TRUE indicated points are inside ellipses
+
+# Combining data points for labeling
+transcript_expr_logic2 <- cbind(comb_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+
+
+expr_logic2 <- transcript_expr_logic2 %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+                                              Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
+                                              Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
+  mutate(in_ell = coalesce(in_ell, "FALSE"))
+
+expr_logic2[which(expr_logic2$in_ell == FALSE),]
+
+```
+
+```{r}
+PC2_3all + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*8), yend=(PC3*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC2*8.75), #add the tissue names to it manually
+             y=(PCA_loadings$PC3*8.75), 
+             label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw()+
+   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+   ggrepel::geom_text_repel(data = expr_logic2 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC2, PC3, label=sub(".*\\|", "", heatmap_label)), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+  labs(color = "Class") + 
+  theme_bw()
+  
+ggsave("20230927_PC2_3_allTissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20230927_PC2_3_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+```
+## PC3 and PC4 for all 14 tissues
+```{r}
+PC3_4all <- ggbiplot::ggbiplot(pca, obs.scale = 1, var.scale = .5, choices = c(3,4), 
+                             varname.adjust = 3,
+                            groups = Family, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE, ellipse.prob = .70)
+
+
+# Extract components so we can select out 
+PC3_4all$data
+build <- ggplot_build(PC3_4all)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(comb_pca_df$PC3, 
+                               comb_pca_df$PC4, 
+                               as.factor(comb_pca_df$Family), levels=c(.7, .9))
+# add geom_point with ellipses point 
+
+ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+
+ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+
+ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+
+# Find which points are outside (!) the ellipse, and add this to the data
+
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+) 
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+# as.logical(point..) equals to TRUE indicated points are inside ellipses
+
+# Combining data points for labeling
+transcript_expr_logic3 <- cbind(comb_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+
+
+expr_logic3 <- transcript_expr_logic3 %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+                                              Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
+                                              Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
+  mutate(in_ell = coalesce(in_ell, "FALSE"))
+
+expr_logic3[which(expr_logic3$in_ell == FALSE),]
+```
+
+
+```{r}
+PC3_4all + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC3*8), yend=(PC4*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC3*8.75), #add the tissue names to it manually
+             y=(PCA_loadings$PC4*8.75), 
+             label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw()+
+   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+  ggrepel::geom_text_repel(data = expr_logic3 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC3, PC4, label=sub(".*\\|", "", heatmap_label)), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+   labs(color = "Class") + 
+  theme_bw()
+
+ggsave("20230927_PC3_4_allTissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20230927_PC3_4_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+
+```
+
+# PCA with only tissues of interest
+
+
+```{r}
+pca2 <- prcomp(pca_data[, -c(1:5, 7:10, 16, 18:19)], 
+              scale. = T, center = T)
+summary(pca2)
+
+
+factoextra::fviz_eig(pca2, main = "Principal components variance for the 7 tissues")
+ggsave("20230927_PCscreePlot_7Tissues.png", dpi = 1000, width = 10, height = 8)
+
+```
+
+
+```{r}
+
+joint_pca_df <- cbind(pca_data, pca2$x[, 1:4])
+head(joint_pca_df)
+
+Family <- joint_pca_df$Family
+
+# extract the loading so we can change the arrows more easily later while ploting
+PCA_loadings2 <- data.frame(Variables=rownames(pca2$rotation), pca2$rotation)
+```
+
+```{r}
+# Plot
+library(ggrepel)
+PC1_2_7tissues <- ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(1, 2),
+                             varname.adjust = 3,
+                            groups = Family, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE, ellipse.prob = .70) 
+
+```
+ 
+## withdraw lables outside ellipses to label outliers
+```{r}
+# Extract components so we can select out 
+PC1_2_7tissues$data
+build <- ggplot_build(PC1_2_7tissues)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(joint_pca_df$PC1, 
+                               joint_pca_df$PC2, 
+                               as.factor(joint_pca_df$Family), levels=c(.7, .9))
+# add geom_point with ellipses point 
+
+ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+
+ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+
+ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+
+# Find which points are outside (!) the ellipse, and add this to the data
+library(sp)
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+) 
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+# as.logical(point..) equals to TRUE indicated points are inside ellipses
+
+# Combining data points for labeling
+#Combine data points coordinates with PCs and expression data containing gene names will help us to have only genes of interest names, or at list the majority of them.
+transcript_expr_logical <- cbind(joint_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+
+
+expr_logical <- transcript_expr_logical %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+                                              Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
+                                              Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
+  mutate(in_ell = coalesce(in_ell, "FALSE"))
+
+expr_logical[which(expr_logical$in_ell == FALSE),]
+
+```
+
+
+```{r}
+
+ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(1, 2),
+                             varname.adjust = 3,
+                            groups = Family, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE, ellipse.prob = .70) + 
+    geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8), yend=(PC2*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings2$PC1*8.75), #add the tissue names to it manually
+             y=(PCA_loadings2$PC2*8.75), 
+             label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw()+
+   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+  ggrepel::geom_text_repel(data = expr_logical %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC1, PC2, label=sub(".*\\|", "", heatmap_label)), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+   labs(color = "Class") + 
+  theme_bw()
+
+ggsave("20230927_PC1_2_7Tissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20230927_PC1_2_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+```
+
+## PC2 and PC3 outside ellipse labels
+```{r}
+PC2_3tissues <- ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(2, 3),
+                             varname.adjust = 3,
+                            groups = Family, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE, ellipse.prob = .70) 
+    
+
+# Extract components so we can select out 
+PC2_3tissues$data
+build <- ggplot_build(PC2_3tissues)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(joint_pca_df$PC2, 
+                               joint_pca_df$PC3, 
+                               as.factor(joint_pca_df$Family), levels=c(.7, .9))
+# add geom_point with ellipses point 
+
+ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+
+ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+
+ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+
+# Find which points are outside (!) the ellipse, and add this to the data
+library(sp)
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+) 
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+# as.logical(point..) equals to TRUE indicated points are inside ellipses
+
+# Combining data points for labeling
+transcript_expr_logical2 <- cbind(joint_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+
+
+expr_logical2 <- transcript_expr_logical2 %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+                                              Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
+                                              Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
+  mutate(in_ell = coalesce(in_ell, "FALSE"))
+
+expr_logical2[which(expr_logical2$in_ell == FALSE),]
+
+
+```
+
+```{r}
+
+PC2_3tissues + 
+  geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*7), yend=(PC3*7)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings2$PC2*7.2), #add the tissue names to it manually
+             y=(PCA_loadings2$PC3*7.2), 
+             label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw()+
+   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+  ggrepel::geom_text_repel(data = expr_logical2 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC2, PC3, label=sub(".*\\|", "", heatmap_label)), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+   labs(color = "Class") + 
+  theme_bw()
+
+ggsave("20230927_PC2_3_7Tissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20230927_PC2_3_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+
+```
+
+
+
+## PC3 and PC4 outside ellipse labels
+```{r}
+PC3_4tissues <- ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(3,4), 
+                             varname.adjust = 3,
+                            groups = Family, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE, ellipse.prob = .70)
+    
+
+# Extract components so we can select out 
+PC3_4tissues$data
+build <- ggplot_build(PC3_4tissues)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(joint_pca_df$PC3, 
+                               joint_pca_df$PC4, 
+                               as.factor(joint_pca_df$Family), levels=c(.7, .9))
+# add geom_point with ellipses point 
+
+ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+
+ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+
+ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+
+# Find which points are outside (!) the ellipse, and add this to the data
+library(sp)
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+) 
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+# as.logical(point..) equals to TRUE indicated points are inside ellipses
+
+# Combining data points for labeling
+transcript_expr_logical3 <- cbind(joint_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+
+
+expr_logical3 <- transcript_expr_logical3 %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+                                              Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
+                                              Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
+  mutate(in_ell = coalesce(in_ell, "FALSE"))
+
+expr_logical3[which(expr_logical3$in_ell == FALSE),]
+
+
+```
+
+```{r}
+PC3_4tissues + 
+    geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC3*8), yend=(PC4*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings2$PC3*8.75), #add the tissue names to it manually
+             y=(PCA_loadings2$PC4*8.75), 
+             label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw()+
+   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+  ggrepel::geom_text_repel(data = expr_logical3 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC3, PC4, label=sub(".*\\|", "", heatmap_label)), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+   labs(color = "Class") + 
+  theme_bw()
+
+
+ggsave("20230927_PC3_4_7Tissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20230927_PC3_4_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+```
+
+# Principal component comparisons.
+
+We observe here the differences between our principal component analysis with all 14 tissues from databases, and with only the 7 tissues that are part of aerial architecture. It is visible that our principal component analysis is minimally affected by the exclusion of tissues herein analysed, hence we are confident to display only the aerial tissues we are interested in. We also observe that root, hypocotyl, nodule, and open flower fall along the same direction, implying that these tissues are correlated. As we move to principal components that accounts for smaller amounts of variation, we notice  an improvement in the discrimination of the correlation between root, nodule and hypocotyl tissues. On the other hand  root tips, and open flower correlation to hypocotyl shifts more when looking at PC3 and PC4, with a very small discrimination between these tissues. We can speculate that this correlation could be due to these tissues being at approximate similar developmental stages, and therefore exhibit similar patterns of gene expression as they respond to common developmental cues. It also shows the redundancy of auxin response genes as they have overlap in functional roles. Further investigation of these genes are important to gain more insightful information of which genes are important in growth and development of these tissues, and if different pair of auxin regulatory genes are important during this process.  

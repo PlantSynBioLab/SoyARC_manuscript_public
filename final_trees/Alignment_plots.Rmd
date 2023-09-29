@@ -1,0 +1,391 @@
+---
+title: "Alignment Plots"
+author: "Deisiany"
+date: "2022-12-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+#library(msa)
+library(ggmsa)
+library(Biostrings)
+library(tidyverse)
+library(ggtree)
+library(tidyr)
+library(ggrepel)
+library(r1001genomes)
+library(magrittr) # fancy pipes
+library(forcats)
+```
+
+
+
+# TIR1/AFBs alignment plot Figure
+
+```{r, results="tex"}
+AFB_aligned_4figure <- Biostrings::readAAStringSet("AFB_input/AFB_aligned_4figure.fasta") # has only A. thaliana, L. japonicus and G.max sequences
+
+# Remove everything in sequences name before | character
+AFB_aligned_4figure@ranges@NAMES <- gsub( "^[^:|]*.", "", AFB_aligned_4figure@ranges@NAMES)
+AFB_aligned_4figure@ranges@NAMES
+
+class(AFB_aligned_4figure)
+
+# Make fasta file into a dataframe so we can re-order it more easily
+AFB_aligned_4figure2 <- as.data.frame(AFB_aligned_4figure)
+AFB_aligned_4figure2 <- rownames_to_column(AFB_aligned_4figure2, var = 'transcript_ID')
+
+# Get the tip labels from ggtree so we can re-order alignment according to it.
+tree <- treeio::read.mrbayes(file = "AFB_input/mb_results_mult/AFBmult_final.nex.con.tre")
+
+gtree <- ggtree(tree, layout="circular", branch.length = 'none') + geom_tiplab(size=3, align = T) 
+
+# get order from ggtree so we can re-order the alignment according to it.
+gtree_df_tip_order <- as.data.frame(get_taxa_name(gtree)) 
+
+# Remove tips that we are not showing for the alignment
+gtree_df_tip_order2 <- gtree_df_tip_order %>% 
+  filter(!grepl('Medtr|Glyso', `get_taxa_name(gtree)`)) %>% 
+  rename_with(.cols = 1, ~"transcript_ID") #rename according to other dataframes so we can join later and preserve the order.
+
+# Render tips into a list
+gtree_df_tip_order3 <- as.list(gtree_df_tip_order2)
+
+# We also want to label Arabidopsis according to their known function/classification.
+IDs <- readxl::read_xls("../AFB_files/all_IDs.xls")
+IDs <- IDs  %>% filter(!grepl('Medtr|Glyso|LjContig|Glyma.02G152800.3', gene_IDs)) %>% rename_with(.cols = 1, ~ "transcript_ID")
+
+
+# Join dataframes and preserve TIP ORDER from phylogeny
+AFB_order <- dplyr::left_join(gtree_df_tip_order2, IDs[,1:2])
+
+
+AFB_aligned_4figure2 <- rownames_to_column(AFB_aligned_4figure2, "transcript_ID")
+
+# Now we can join the data frame with sequences created earlier with the IDs order from ggtree
+AFB_aligned_4figure3 <- dplyr::left_join(AFB_order, AFB_aligned_4figure2)
+AFB_aligned_4figure3 <- AFB_aligned_4figure3[,-1] # Keep only one column with gene IDs
+
+# if we want to drop COI genes from plot we need to remove rows from 26 to 32
+AFB_aligned_4figure3 <- AFB_aligned_4figure3[-c(26:32),]
+
+AFB_aligned_4figure3 <- column_to_rownames(AFB_aligned_4figure3, "names") # get column back to rowname so we can work on getting our fasta file structure back for alignment
+
+AFB_aligned_4figure3 <- as.list(AFB_aligned_4figure3) # convert df into a list
+AFB_aligned_4figure3$x <- as.character(AFB_aligned_4figure3$x) #convert sequences into character so we can get the AAstring structure back
+
+AFB_4alignment <- as(AFB_aligned_4figure3$x, "AAStringSet") 
+
+# Note that when we do that we ended up with NULL gene names, however the order is preserved. In this case we can just assign the names in the same order.
+AFB_4alignment@ranges@NAMES <- as.character(AFB_order[-c(26:32),]$names)
+# Then we can write the fasta file in case we want to load later without starting from scratch.
+writeXStringSet(test, "AFB_aligned_4figure3.fasta")
+
+
+(AFB_aligned <- DECIPHER::AlignSeqs(AFB_4alignment))
+BrowseSeqs(AFB_aligned, colWidth = 100)
+
+#make df for ggplot
+AFB_aln_df <- r1001genomes::makeAlnDF(AFB_aligned)
+
+AFB_aln_df$gap <- AFB_aln_df$seq_pos == "-"
+```
+
+
+# Plot alignment
+```{r, results="tex"}
+AFB_aln <- ggplot(AFB_aln_df,  aes(x = aln_pos, y = seq_name)) +
+  geom_raster(mapping = aes(
+                            alpha = gap), fill="gray") + theme_classic() +
+  scale_alpha_manual(values = c("TRUE" = 0, "FALSE" = 1),
+                     labels = c("aligned", "gap"),
+                     guide = guide_legend(override.aes =
+                                            list(fill = c("gray", "white")),
+                       title = "alignment",
+                       direction = "vertical")) +
+  scale_y_discrete(expand = c(0,0)) +
+  scale_x_continuous(expand = c(0,0))  +
+  labs(y="", x = "Sequence alignment") +
+  #theme_bw(base_family = "Arial") +
+  theme(legend.position = c("bottom")) 
+  
+AFB_aln
+
+ggsave("AFB_input/figures/ggplot_AFB_alignment.png", width = 10, height = 10, dpi = 800) # result is really long. We could show the alignment for genes that we have highlighted in results.
+
+ggsave("ggplot_AFB_alignment.pdf", width = 10, height = 10) # result is really long. We could show the alignment for genes that we have highlighted in results.
+```
+
+#Add Positions based on TIR1 F-Box and LRR region
+https://github.com/wrightrc/ViVa-paper/blob/master/manuscript/03-AFBs.Rmd
+https://github.com/wrightrc/ViVa-paper/blob/master/manuscript/tables/annotation_long.csv
+```{r}
+#make collapsed alignment for translating positions into geom_rect later.
+collapsed_aln_df <- AFB_aln_df %>% dplyr::select(aln_pos, seq_pos, seq_name) %>% tidyr::spread(key = seq_name, value = seq_pos)
+
+# Read in positions file from ViVa-paper
+annotation_long <- read_csv(file = "annotation_long.txt") 
+annotation_long <- annotation_long[,-1]
+# annotation <- addAlnPosToAnno(anno_df = annotation_long, aln_df = AFB_aln_df) I don't have all the postitions from G. max genes
+
+AFB_aln + annotate("rect", xmin = 1, xmax = 110, #According to alignment from BrowseSeq and annotation for AFB4/5 with AA F-box end position at 96th AA.
+                   ymin = .5, ymax = 26, alpha=0, color= "black", linewidth=.3, size=2) + 
+  annotate("text", x=35, y=25.5, label="F-box", size=2.5, color="black") +
+  annotate("rect", xmin = 115, xmax = 700, 
+                   ymin = .5, ymax = 26, alpha=0, color= "black", linewidth=.3, size=2) +
+  annotate("text", x=400, y=25.5, label="LRR", size=2.5, color="black") + 
+  theme_linedraw()+
+  theme(legend.position = c("bottom")) 
+
+ggsave("AFB_input/figures/annotated_AFB.png", width = 7, height = 5, dpi = 800)
+```
+
+
+
+# ARFs
+```{r}
+ARF_aligned_4figure <- Biostrings::readAAStringSet("ARF_input/ARFunique 2.fasta") # has only A. thaliana, L. japonicus and G.max sequences
+names(ARF_aligned_4figure)
+
+class(ARF_aligned_4figure)
+
+# Make fasta file into a dataframe so we can re-order it more easily
+ARF_aligned_4figure2 <- as.data.frame(ARF_aligned_4figure)
+ARF_aligned_4figure2 <- rownames_to_column(ARF_aligned_4figure2, var = 'transcript_ID')
+
+#remove tips that are not from Arabidopsis and G. max and also Glyma.15G142600
+ARF_aligned_4figure2 <- ARF_aligned_4figure2 %>% filter(!grepl('Medtr|Glyso|Lj|Glyma.15G142600', transcript_ID))
+
+# Get the tip labels from ggtree so we can re-order alignment according to it.
+tree <- treeio::read.mrbayes(file = "ARF_input/mb_results_mult/ARFmult_final.nex.con.tre")
+
+gtree <- ggtree(tree, layout="circular", branch.length = 'none') + geom_tiplab(size=3, align = T) 
+
+# get order from ggtree so we can re-order the alignment according to it.
+gtree_df_tip_order <- as.data.frame(get_taxa_name(gtree)) 
+
+# Remove tips that we are not showing for the alignment
+gtree_df_tip_order2 <- gtree_df_tip_order %>% 
+  filter(!grepl('Medtr|Glyso|Lj|Glyma.15G142600', `get_taxa_name(gtree)`)) %>% 
+  rename_with(.cols = 1, ~"transcript_ID") #rename according to other dataframes so we can join later and preserve the order.
+
+# Render tips into a list
+gtree_df_tip_order3 <- as.list(gtree_df_tip_order2)
+
+# We also want to label Arabidopsis according to their known function/classification.
+IDs <- read_csv("../ARF_gene_ids.csv")
+IDs <- IDs  %>%  rename_with(.cols = 1, ~ "transcript_ID")
+
+# Join dataframes and preserve TIP ORDER from phylogeny
+ARF_order <- dplyr::left_join(gtree_df_tip_order2, IDs[,1:2])
+
+# Now we can join the data frame with sequences created earlier with the IDs order from ggtree
+ARF_aligned_4figure3 <- dplyr::left_join(ARF_order, ARF_aligned_4figure2)
+ARF_aligned_4figure3 <- ARF_aligned_4figure3[,-1] # Keep only one column with gene IDs
+
+ARF_aligned_4figure3 <- column_to_rownames(ARF_aligned_4figure3, "name") # get column back to rowname so we can work on getting our fasta file structure back for alignment
+
+ARF_aligned_4figure3 <- as.list(ARF_aligned_4figure3) # convert df into a list
+ARF_aligned_4figure3$x <- as.character(ARF_aligned_4figure3$x) #convert sequences into character so we can get the AAstring structure back
+
+ARF_4alignment <- as(ARF_aligned_4figure3$x, "AAStringSet") 
+
+# Note that when we do that we ended up with NULL gene names, however the order is preserved. In this case we can just assign the names in the same order.
+ARF_4alignment@ranges@NAMES <- as.character(ARF_order$name)
+# Then we can write the fasta file in case we want to load later without starting from scratch.
+writeXStringSet(ARF_4alignment, "ARF_input/ARF_aligned_4figure3.fasta")
+
+
+
+ARF_aln <- AlignSeqs(ARF_4alignment)
+
+BrowseSeqs(ARF_aln, colWidth = 100)
+BrowseSeqs(ARF_aln)
+
+#make df for ggplot
+ARF_aln_df <- r1001genomes::makeAlnDF(ARF_aln)
+
+ARF_aln_df$gap <- ARF_aln_df$seq_pos == "-"
+
+```
+
+
+# Plot ARF alignment 
+```{r}
+ARF_aln <- ggplot(ARF_aln_df,  aes(x = aln_pos, y = seq_name)) +
+  geom_raster(mapping = aes(
+                            alpha = gap), fill="gray") + theme_classic() +
+  scale_alpha_manual(values = c("TRUE" = 0, "FALSE" = 1),
+                     labels = c("aligned", "gap"),
+                     guide = guide_legend(override.aes =
+                                            list(fill = c("gray", "white")),
+                       title = "alignment",
+                       direction = "vertical")) +
+  # scale_y_discrete(expand = c(0,0)) +
+  # scale_x_continuous(expand = c(0,0)) +
+  theme(legend.position = c("bottom")) 
+  
+ARF_aln
+
+ggsave("ARF_input/figures/ggplot_ARF_alignment.png", width = 10, height = 10, dpi = 800) # result is really long. We could show the alignment for genes that we have highlighted in results.
+```
+
+```{r}
+
+# Read in positions file from ViVa-paper
+annotation_ARF <- read_csv(file = "ARF_input/ARF_annotations.csv") 
+
+ARF_aln + annotate("rect", xmin = 1400, xmax = 1600, #TYTKVQ from ARF5 or conserved K among alignment or xmax = 1444
+                   ymin = .25, ymax = 79, alpha=0, color= "Black", linewidth=.3, size=2) +
+  #annotate("rect", xmin = 1503, xmax = 1504, # D from the DYESD pattern for ARF5 and DHEND ARF7 and DDEDD ARF1
+   #                ymin = .25, ymax = 79, alpha=0, color= "blue", linewidth=.3, size=2) + 
+ # annotate("rect", xmin = 1507, xmax = 1508, ## D from the DYESD pattern for ARF5 and DHEND ARF7 and DDEDD ARF1
+#                   ymin = .25, ymax = 79, alpha=0, color= "blue", linewidth=.3, size=2) +
+  annotate("rect", xmin = 2, xmax = 390, #ARF7 DBD Domain
+                   ymin = .25, ymax = 79, alpha=0, color= "Black", linewidth=.3, size=2) +
+  annotate("rect", xmin = 400, xmax = 1390, #ARF7 DBD Domain
+                   ymin = .25, ymax = 79, alpha=0, color= "Black", linewidth=.3, size=2) +
+ #Label the domains
+  annotate("text", x=1500, y=78, label="PB1 Domain", size=2.5, color="Black") +
+  annotate("text", x=190, y=78, label="DBD Domain", size=2.5, color="Black") + 
+  annotate("text", x=900, y=78, label="MR Domain", size=2.5, color="Black") +
+  labs(y="", x = "Sequence alignment") + theme_linedraw() +
+  theme(legend.position = c("bottom")) 
+
+ggsave("ARF_input/figures/annotated_ARF.png", width = 15, height = 10, dpi = 800)
+```
+
+
+# IAA alignment Plot
+
+```{r}
+IAA_aligned_4figure <- Biostrings::readAAStringSet("../final_trees/IAA_input/mart_export_IAA_E1-50__CC2.txt")
+
+IAA_aligned_4figure <- unique(IAA_aligned_4figure)
+names(IAA_aligned_4figure)
+
+# remove doubled name.
+names(IAA_aligned_4figure) <- stringr::str_remove(names(IAA_aligned_4figure), ".*\\|")
+names(IAA_aligned_4figure)
+
+# Make fasta file into a dataframe so we can re-order it more easily
+IAA_aligned_4figure2 <- as.data.frame(IAA_aligned_4figure)
+IAA_aligned_4figure2 <- rownames_to_column(IAA_aligned_4figure2, var = 'transcript_ID')
+
+#remove tips that are not from Arabidopsis and G. max
+IAA_aligned_4figure2 <- IAA_aligned_4figure2 %>% 
+  filter(!grepl('Medtr|Glyso|Lj', transcript_ID))
+
+# Get the tip labels from ggtree so we can re-order alignment according to it.
+tree <- treeio::read.mrbayes(file = "IAA_input/mb_results_mult_final/IAAmult_final5.nex.con.tre")
+
+gtree <- ggtree(tree, layout="circular", branch.length = 'none') + geom_tiplab(size=3, align = T) 
+
+# get order from ggtree so we can re-order the alignment according to it.
+gtree_df_tip_order <- as.data.frame(get_taxa_name(gtree)) 
+
+# Remove tips that we are not showing for the alignment
+gtree_df_tip_order2 <- gtree_df_tip_order %>% 
+  filter(!grepl('Medtr|Glyso|Lj', `get_taxa_name(gtree)`)) %>% 
+  rename_with(.cols = 1, ~"transcript_ID") #rename according to other dataframes so we can join later and preserve the order.
+
+# Render tips into a list
+gtree_df_tip_order3 <- as.list(gtree_df_tip_order2)
+
+# We also want to label Arabidopsis according to their known function/classification.
+IDs <- read_csv("../IAA_gene_ids.csv")
+IDs <- IDs  %>%  rename_with(.cols = 1, ~ "transcript_ID")
+
+# Join dataframes and preserve TIP ORDER from phylogeny
+IAA_order <- dplyr::left_join(gtree_df_tip_order2, IDs[,1:2])
+
+# Now we can join the data frame with sequences created earlier with the IDs order from ggtree
+IAA_aligned_4figure3 <- dplyr::left_join(IAA_order, IAA_aligned_4figure2)
+IAA_aligned_4figure3 <- IAA_aligned_4figure3[,-1] # Keep only one column with gene IDs
+
+IAA_aligned_4figure3 <- column_to_rownames(IAA_aligned_4figure3, "name") # get column back to rowname so we can work on getting our fasta file structure back for alignment
+
+IAA_aligned_4figure3 <- as.list(IAA_aligned_4figure3) # convert df into a list
+IAA_aligned_4figure3$x <- as.character(IAA_aligned_4figure3$x) #convert sequences into character so we can get the AAstring structure back
+
+IAA_4alignment <- as(IAA_aligned_4figure3$x, "AAStringSet") 
+
+# Note that when we do that we ended up with NULL gene names, however the order is preserved. In this case we can just assign the names in the same order.
+IAA_4alignment@ranges@NAMES <- as.character(IAA_order$name)
+# Then we can write the fasta file in case we want to load later without starting from scratch.
+writeXStringSet(IAA_4alignment, "IAA_input/IAA_aligned_4figure3.fasta")
+
+IAA_aln <- AlignSeqs(IAA_4alignment)
+BrowseSeqs(IAA_aln)
+BrowseSeqs(IAA_aln, colWidth = 100)
+
+#make df for ggplot
+IAA_aln_df <- r1001genomes::makeAlnDF(IAA_aln)
+
+IAA_aln_df$gap <- IAA_aln_df$seq_pos == "-"
+
+```
+
+# Plot IAA alignment 
+```{r}
+IAA_aln <- ggplot(IAA_aln_df,  aes(x = aln_pos, y = seq_name)) +
+  geom_raster(mapping = aes(
+                            alpha = gap), fill="gray") + theme_classic() +
+  scale_alpha_manual(values = c("TRUE" = 0, "FALSE" = 1),
+                     labels = c("aligned", "gap"),
+                     guide = guide_legend(override.aes =
+                                            list(fill = c("gray", "white")),
+                       title = "alignment",
+                       direction = "vertical")) +
+  scale_y_discrete(expand = c(0,0)) +
+  scale_x_continuous(expand = c(0,0)) + 
+  labs(y="", x = "Sequence alignment") +
+  theme(legend.position = c("bottom")) 
+  
+IAA_aln
+
+ggsave("IAA_input/figures/ggplot_IAA_alignment.png", width = 10, height = 10, dpi = 800) # result is really long. We could show the alignment for genes that we have highlighted in results.
+```
+
+```{r}
+# Read in positions file from ViVa-paper
+annotation_IAA <- read_csv(file = "IAA_input/IAA_annotations.csv") 
+
+IAA_aln + annotate("rect", xmin = 170, xmax = 175, #IAA1 "LRLGL" EAR domain
+                   ymin = .25, ymax = 91, alpha=0, color= "black", linewidth=.3, size=2) + 
+   annotate("rect", xmin = 390, xmax = 399, #IAA1 QIVGWP---P and for Glyma QVVGWP---P
+                    ymin = .25, ymax = 91, alpha=0, color= "black", linewidth=.3, size=2) +
+  #PB1
+  annotate("rect", xmin = 470, xmax = 604, # Maybe just plot the whole PB1 region 
+                    ymin = .25, ymax = 91, alpha=0, color= "black", linewidth=.3, size=2) +
+  # PB1 for each aminoacid
+  #  annotate("rect", xmin = 540, xmax = 541, #IAA1 (K77?) PB1 domain based on consensus bar. K is conserved accross most of the IAA genes. IAA33 has a T instead such as in https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4330575/ . We can also look for the match for IAA12 LGFVKVNMD where K is the conserved K that we are highlighting in this case.
+  #                   ymin = .25, ymax = 91, alpha=0, color= "black", linewidth=.3, size=2) + # Is V also part of it?
+  # 
+  # annotate("rect", xmin = 551, xmax = 552, # PB1 domain based on consensus bar. R IAA1(R88?) (and k? again) is conserved across most of the IAA genes
+  #                   ymin = .25, ymax = 91, alpha=0, color= "black", linewidth=.3, size=2) +
+  # 
+  # annotate("rect", xmin = 636, xmax = 637, # PB1 domain based on consensus bar. IAA1 (D133?) is conserved across most of the IAA genes
+  #                   ymin = .25, ymax = 91, alpha=0, color= "black", linewidth=.3, size=2) +
+  # annotate("rect", xmin = 638, xmax = 639, # PB1 domain based on consensus bar. IAA1(D135?) is conserved across most of the IAA genes
+  #                   ymin = .25, ymax = 91, alpha=0, color= "black", linewidth=.3, size=2) +
+  # 
+  #  annotate("rect", xmin = 644, xmax = 645, # PB1 domain based on consensus bar. IAA1(D137?) is conserved across most of the IAA genes
+  #                   ymin = .25, ymax = 91, alpha=0, color= "black", linewidth=.3, size=2) +
+  # 
+  # annotate("rect", xmin = 645, xmax = 646, # PB1 domain based on consensus bar. IAA1(D143?) is conserved across most of the IAA genes
+  #                   ymin = .25, ymax = 91, alpha=0, color= "black", linewidth=.3, size=2) +
+
+ #Label the domains
+  annotate("text", x=136, y=90.5, label="EAR Domain", size=2.5, color="black") +
+  annotate("text", x=370, y=90.5, label="Degron", size=2.5, color="black") +
+  annotate("text", x=535, y=90.5, label="PB1 Domain", size=2.5, color="black") +
+  theme_linedraw() +
+  theme(legend.position = c("bottom")) 
+
+
+ggsave("IAA_input/figures/annotated_IAA.png", width = 10, height = 10, dpi = 800)
+```
+

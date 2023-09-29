@@ -1,0 +1,19 @@
+execute ARFmult_final.nex;
+
+outgroup AT1G77850.1;
+
+lset nucmodel=protein Rates=invgamma;
+
+prset aamodelpr=fixed(jones) statefreqpr=fixed(empirical);
+
+propset ExtTBR$prob=0;
+
+mcmcp samplefreq=10000 printfreq=1000;
+mcmcp nruns=2 stoprule=YES burninfrac=.25;
+mcmcp stopval=0.01 minpartfreq=0.05;
+mcmcp mcmcdiagn=YES diagnfreq=100;
+mcmcp nchains=8;
+
+mcmc;
+sump;
+sumt;

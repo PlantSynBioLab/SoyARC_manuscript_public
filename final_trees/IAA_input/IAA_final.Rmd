@@ -1,0 +1,635 @@
+---
+title: "Final IAA phylogenetic analysis"
+author: "Deisiany"
+date: "2022-09-23"
+output: html_document
+---
+
+# Load libraries
+```{r}
+library(devtools)
+library(phangorn)
+library(ggtree)
+library(treeio)
+library(ggplot2)
+library(tidyverse)
+library(BSgenome)
+library(Biostrings)
+library(XVector)
+library(rtracklayer)
+library(GenomicFeatures)
+library(biomaRt)
+library(ape)
+library(DECIPHER)
+library(Rcpi)
+library(dplyr)
+
+```
+
+In the past analysis we had wrangled data downloaded through a BLAST search. Now we will load this data in and make a couple deletions for families that we are not interested on having in the final trees.
+
+```{r}
+GmIAAs <- Biostrings::readAAStringSet(filepath = "GmIAAs.txt")
+Gm_IDs <- as.data.frame(names(GmIAAs))
+unique(GmIAAs)
+duplicated(GmIAAs)
+(Alined_IAA <- DECIPHER::AlignSeqs(GmIAAs))
+
+Biostrings::writeXStringSet(Alined_IAA, "Aligned_IAA.fasta")
+```
+After alignment we also want to perform a mask alignment to get read of all the low information in the alignment. are 65 GmIAAs in total.
+```{r}
+(IAA_masked <- DECIPHER::MaskAlignment(Alined_IAA,
+              type = "sequences",
+              windowSize = 6, # same as aliscore default value.
+              threshold = 1,
+              maxFractionGaps = 0.2,
+              includeTerminalGaps = FALSE,
+              correction = FALSE,
+              showPlot = FALSE))
+
+# make it a AAStringSet
+AAstr_IAA <- as(IAA_masked, "AAStringSet")
+DECIPHER::BrowseSeqs(AAstr_IAA) # A few sequences seems really small, however I believe they will probably be dropped in MrBayes
+
+writeXStringSet(AAstr_IAA, file="masked_IAA.fasta" )
+
+#Create a matrix so we can create the nexus file next
+(matrix_IAA <- as.matrix(AAstr_IAA, use.names=TRUE))
+
+# Also remove all the * from sequences because MrBayes does not like it
+matrix_IAA2 <-  sub("\\*", "-", matrix_IAA)
+ 
+DECIPHER::BrowseSeqs(AAStringSet(matrix_IAA2))
+
+# Write nex file for MrBayes analysis
+ape::write.nexus.data(matrix_IAA2, format = "protein", 
+                      file = "IAA_final5.nex", 
+                      datablock = TRUE,
+                      interleaved = TRUE, 
+                      charsperline = NULL,
+                      gap = NULL, missing = NULL)
+
+
+# Mbayes analysis were done following steps in IAA_Final.Rmd script
+
+
+
+```
+
+If running an interactive job:
+Screen
+
+interact --nodes=1 --ntasks-per-node=16 --cpus-per-task=1 --partition=normal_q --time=6-00:00:00 --account=apple_rootstock-scion
+
+#  --ntasks-per-node=16  # this is equal nchains * nruns (8*2)
+module load ...etc.
+
+
+# If using a script
+
+Example Bash script:
+_________________
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=1
+#SBATCH --partition=normal_q
+#SBATCH --time=1-00:00:00
+#SBATCH --account=apple_rootstock-scion
+
+module reset
+module load MrBayes/3.2.7-gompi-2020b
+cd $SLURM_SUBMIT_DIR
+
+mpirun mb IAA_mb.txt
+
+echo "job completed"
+________________
+
+
+#IAA_mb.txt (the following code chunk)
+
+```{bash A. thaliana IAA_phylogeny_construction, eval=FALSE}
+# Start MrBayes
+
+execute IAA_final.nex;
+# set IAA33 as the outgroup
+outgroup Glyma.20G083900.1;
+
+lset nucmodel=protein Rates=invgamma;
+# or include Nst=6  ngammacat=4 omegavar=M3 
+prset aamodelpr=fixed(jones) statefreqpr=fixed(empirical); #topologypr=fixed(IAA_fastME.nex)
+# initial run with aamodelpr=mixed yielded posterior prob of 1 for jones model
+propset ExtTBR$prob=0;
+
+mcmcp samplefreq=10000 printfreq=1000;
+mcmcp nruns=2 stoprule=YES burninfrac=.25;
+mcmcp stopval=0.01 minpartfreq=0.05;
+mcmcp mcmcdiagn=YES diagnfreq=100;
+mcmcp nchains=8; 
+
+mcmc
+sump
+sumt
+
+
+```  
+
+sbatch mb.sh
+
+# ARC
+ Check for how a job is running and the output of the job (slurm file)in real time
+ tail -f <slurm.out>
+ CTRL + C # to get out
+ 
+ squeue -u <PID>   # to check jobs and its IDs
+ 
+ jobload <jobID>   # to check how well a job is running.
+ htop <node?>
+ 
+ 
+ # Multiple IAAs from 5 different species.
+ E-values used in phytozome v13 BLAST search was less than or equals to 1-50. We also included the Glyma.01G039300:
+ Which chould be Glyma.01g04616 from Kaller's paper.The only place where I could find its gene ID and sequence was under this link: https://smart.embl.de/smart/show_motifs.pl?GENOMIC=1&DO_PFAM=DO_PFAM&INCLUDE_SIGNALP=INCLUDE_SIGNALP&ID=GLYMA01G04616.1and if I BLAST that under phytozome than I have 100 % compatibility with a complete different ID. Also, nothing appears with the  Glyma.01g04616.https://phytozome-next.jgi.doe.gov/report/protein/Gmax_Wm82_a2_v1/Glyma.01G039300.1.p
+ 
+```{r}
+IAAmult <- Biostrings::readAAStringSet("mart_export_IAA_E1-50__CC2.txt")
+duplicated(IAAmult)
+IAAmult <- unique(IAAmult)
+names(IAAmult)
+
+# remove doubled name.
+names(IAAmult) <- stringr::str_remove(names(IAAmult), ".*\\|")
+
+aligned_IAAmult <- DECIPHER::AlignSeqs(IAAmult)
+
+Biostrings::writeXStringSet(aligned_IAAmult, "aligned_IAAmult_5_fam.fasta")
+```
+ 
+Mask alignment and prepare sequences for MrBayes
+```{r}
+masked_IAAmult <- DECIPHER::MaskAlignment(aligned_IAAmult, type = "sequences",
+              windowSize = 6, # same as aliscore default value.
+              threshold = 1,
+              maxFractionGaps = 0.2,
+              includeTerminalGaps = FALSE,
+              correction = FALSE,
+              showPlot = FALSE)
+
+maskedAAstr_IAAmult <- as(masked_IAAmult, "AAStringSet")
+DECIPHER::BrowseSeqs(maskedAAstr_IAAmult)
+
+Biostrings::writeXStringSet(maskedAAstr_IAAmult, "masked_IAAmult.fasta")
+
+# Create a matrix that we will use to generate nexus file needed in MrBayes
+matrix_IAAmult <- as.matrix(maskedAAstr_IAAmult, use.names=TRUE)
+
+# change character * to - in matrix because that pattern is not recognized by MrBayes
+matrix_IAAmult2 <- sub("\\*", "-", matrix_IAAmult)
+
+DECIPHER::BrowseSeqs(AAStringSet(matrix_IAAmult2))
+
+# Write nex file for MrBayes analysis
+ape::write.nexus.data(matrix_IAAmult2, format = "protein", 
+                      file = "IAAmult_final5.nex", 
+                      datablock = TRUE,
+                      interleaved = TRUE, 
+                      charsperline = NULL,
+                      gap = NULL, missing = NULL)
+
+```
+
+# Bash script
+Create a bash script with following information:
+
+_________________
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=24   # the number of tasks is the number of nrun*nchains
+#SBATCH --cpus-per-task=1
+#SBATCH --partition=normal_q
+#SBATCH --time=2-00:00:00
+#SBATCH --account=apple_rootstock-scion
+
+module reset
+module load MrBayes/3.2.7-gompi-2020b
+cd $SLURM_SUBMIT_DIR
+
+mpirun mb IAAmult_mb.txt  # file with MrBayes chunck information for execution
+
+echo "job completed"
+________________
+
+# IAAmult_mb.txt
+```{bash A. thaliana IAA_phylogeny_construction, eval=FALSE}
+execute IAA_final.nex;
+
+# set AtIAA33 as the outgroup
+outgroup AT5G57420.1;
+
+lset nucmodel=protein Rates=invgamma;
+
+prset aamodelpr=fixed(jones) statefreqpr=fixed(empirical); 
+
+# initial run with aamodelpr=mixed yielded posterior prob of 1 for jones model
+propset ExtTBR$prob=0;
+
+mcmcp samplefreq=10000 printfreq=1000;
+mcmcp nruns=2 stoprule=YES burninfrac=.25;
+mcmcp stopval=0.01 minpartfreq=0.05;
+mcmcp mcmcdiagn=YES diagnfreq=100;
+mcmcp nchains=12; 
+
+mcmc
+sump
+sumt
+
+
+```  
+
+# Run bash script once both files are set!
+sbatch mb.sh
+
+To check the job run:
+tail -f <slurm>
+
+To copy files to github/personal computer, run:
+1.	sftp Username@SERVER
+2.	cd /remote/path where my documents are stored
+		cd /home/deisiany
+3.	ls
+4.	get FILENAME_2 /local/path/
+get IAA* /Users/deisianyneres/GitHub/SoyARCs_manuscript/IAA_input/mb_results/
+
+
+
+ 
+# build G. max tree
+```{r}
+tree <- treeio::read.mrbayes(file = "mb_results/IAA_final5.nex.con.tre")
+
+ggtree(tree, layout="circular", branch.length = 'prob') + geom_tiplab(size=3, align = T) 
+
+
+ggsave("figures/g_max_mb_tree.pdf", height = 13, width = 13)
+
+```
+
+# Build G. max tree with multiple species.
+This chunck has many variation of trees and attemptives. 
+```{r}
+tree <- treeio::read.mrbayes(file = "mb_results_mult_final/IAAmult_final5.nex.con.tre")
+
+g_tree <- ggtree(tree, layout="circular", branch.length = 'prob') + geom_tiplab(size=3, align = T) 
+g_tree
+
+# change tips according to Arabidopsis classification
+names <- as.data.frame(tree@phylo[["tip.label"]])
+
+names2 <- names %>% mutate(tair_locus = str_remove_all(.$`tree@phylo[["tip.label"]]`, "\\.[^.]*$"))
+
+IDs <- readxl::read_xlsx("../../Gm_GeneIDs.xlsx", sheet = "At_IAA")
+IDs
+
+# We want to join annotated A. thaliana gene IDs with tip trees, and duplicate those who are not classified such as all the other species.
+#IDs$tair_locus <-  paste0(IDs$tair_locus, ".1")
+
+TipLabel <- merge(x=names2, y=IDs, all.x=T)
+tipLabel <- TipLabel[,-1] %>% dplyr::select(`tree@phylo[["tip.label"]]`, name, class) %>% 
+  dplyr::rename(., tair_locus =`tree@phylo[["tip.label"]]`)
+
+tipLabel <- within(tipLabel, name[is.na(name)] <- tair_locus[is.na(name)]) # duplicate gene Id from first column to second column when second column is equal to NA
+
+ggtree(tree, layout="circular", branch.length = 'prob') + geom_tiplab(size=3, align = T) 
+
+# Colour genes - for that create a new column called species to be used later in labeling
+IDs <- tipLabel %>%
+  dplyr::select(tair_locus, name, class) %>%
+  dplyr::mutate( Species = tair_locus )
+
+IDs$Species <- IDs$Species %>%  
+  gsub("^AT(.*)", "A. thaliana", .) %>%
+  gsub("^Medtr(.*)", "M. truncatula", .)  %>%
+  gsub("^Glyma(.*)", "G. max", .) %>% gsub("^Glyso(.*)", "G. soja", .) %>%
+  gsub("^Lj(.*)", "L. japonicus", .) 
+
+# write_csv(IDs, "IAA_Tip_Label2.csv")
+# IDs <-read_csv("IAA_Tip_Label.csv") # Some transcripts number ".2 .1 .4 and so on" are different and I manually edited those that were.
+
+#change tree tip.label by matching tip.label to name column (second column) in IDs. This only works if our first column matches the tree tips
+tree@phylo[["tip.label"]] <- IDs[[2]][match(tree@phylo[["tip.label"]], IDs[[1]])]
+tipLabel <- IDs
+
+p <- ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) +
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = -.1, nudge_y = .1, hjust = -.05, size = 1.5)
+p
+
+(p2 <- p %<+% tipLabel + 
+  geom_tippoint(aes(fill=factor(Species)), 
+                size=3.5, shape=21) + geom_tiplab( size=3, hjust=-.1, align = T) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species"))
+  )
+
+
+(p2 <- p %<+% tipLabel + 
+  geom_tippoint(aes(fill=factor(Species)), 
+                size=3, shape=21) + geom_tiplab( size=2.5, hjust=-.01) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) 
+  )
+ggsave("figures/IAA_colored.pdf", width = 17, height = 17)
+
+tipLabel <- tipLabel %>% 
+   dplyr::mutate(tip_color = ifelse(str_detect(name, "At", negate = TRUE), "TO_not", name))
+
+tipLabel2 <- tipLabel %>% 
+   mutate(tip_color = ifelse(str_detect(tip_color, "At", negate = FALSE), "TO_color", tip_color))
+
+# I have also all IDs classified according to tree
+IAA_Classes <- readxl::read_xlsx("IAA_Classes.xlsx")
+
+tipLabel3 <- left_join(tipLabel2, IAA_Classes, by="name")
+tipLabel4 <- within(tipLabel3, class[is.na(class)] <- IAA_Class[is.na(class)])
+
+tipLabel4 <- tipLabel3[,-5]
+tipLabel4 <- tipLabel2 %>% (dplyr::select(., name,  Class = class, Species, tip_color)) 
+
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(color = factor(tip_color)), size=3, hjust=-.15) + 
+   scale_color_manual(values = c("red", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=4.2, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+#without tips aligned
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.15, fontface=2) + #subset tree in order to get classified (TIR1/IAA) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.15) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+# add node number so we can label the classes within IAAs
+ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) + geom_tiplab(align = T)+
+  geom_text(aes(label=node), size=2, hjust=-.3, color="red", fontface=2) + 
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = -.1, nudge_y = .1, hjust = -.05, size = 1.5)
+ggsave("figures/IAA_tree_with_node_numbers.pdf",  height = 13, width = 15)
+
+# Tree with aligned tips   
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T) + #subset tree in order to get classified (TIR1/IAA) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+# Now I will also add the IAAs class
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T) + #subset tree in order to get classified (TIR1/IAA) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+(p3 <- p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T) + #subset tree in order to get classified (TIR1/IAA) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) + 
+   #scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) +  
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) + theme(legend.text = element_text(face = "italic")))
+
+
+p4 <- p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T ) +
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) + 
+  geom_point(aes( color=Species, shape=Class), size=3) +  
+   
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) + 
+  theme(legend.text = element_text(face = "italic")) + 
+  scale_colour_discrete(na.translate = F)
+
+p4 + scale_colour_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) 
+
+ggsave("figures/IAA_colored_tree_final2.pdf", height = 13, width = 15, dpi = 800)
+
+ggsave("figures/IAA_colored_tree_final2.png", height = 13, width = 15, dpi = 800)
+# Collapse SAUR proteins branch
+# ggtree::collapse(p3, node=227) + geom_point2(aes(subset=(node==227)), shape=3, size=2.5, fontface=2)
+# ggsave("figures/IAA_only_colored_tree.pdf", height = 13, width = 15)
+```
+
+```{r}
+p <- ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) +
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = -.1, nudge_y = .1, hjust = -.05, size = 1.5)
+
+# IAA27 tips most common ancestral
+p2 <- as.phylo(p)
+MRCA(p2, 234, 179)
+MRCA(p2, 234, 225)
+mrca.phylo(p2, c(234, 225))
+
+
+```
+
+Get all tips for each IAA classes and make a dataframe with all classes.
+Add what class to each dataframe according to the nodes they fall, and the classes. 
+I am ignoring the wrong labeling to Arabidopsis to Gm because it will be droped since tair locus won't match the Arabidopsis ID.
+```{r}
+IAA_classA1 <- data.frame(get_taxa_name(p, node = 327)) #IAA7,14,17 - Class A
+IAA_classA1 <- IAA_classA1 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...327.`) %>%  
+  mutate(class = "A",
+         name = "GmIAA7/14/17")
+
+IAA_classA1b <- data.frame(get_taxa_name(p, node = 309)) #IAA16 - Class A
+IAA_classA1b <- IAA_classA1b %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...309.`) %>% 
+  mutate(class = "A", 
+         name = "GmIAA16")
+
+IAA_classA2 <- data.frame(get_taxa_name(p, node = 300)) # Class A  -IAA6,19
+IAA_classA2 <- IAA_classA2 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...300.`) %>% 
+  mutate(class = "A", 
+         name = "GmIAA6/19")
+
+IAA_classA3 <- data.frame(get_taxa_name(p, node = 277))  # Class A - IAA1-4
+IAA_classA3 <- IAA_classA3 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...277.`) %>% 
+  mutate(class = "A", 
+         name = "GmIAA1-4")
+
+IAA_classA4 <- data.frame(get_taxa_name(p, node = 240)) # Class A - IAA8,9
+IAA_classA4 <- IAA_classA4 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...240.`) %>% 
+  mutate(class = "A", 
+         name = "GmIAA8-9")
+
+IAA_classA5_2 <- data.frame(get_taxa_name(p, node = 225)) # Class A - IAA27
+IAA_classA5_2 <- IAA_classA5_2 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...225.`) %>% 
+  mutate(class = "A", 
+         name = "GmIAA27")
+
+IAA_classA5_3 <- data.frame(get_taxa_name(p, node = 234)) # Class A - IAA27
+IAA_classA5_3 <- IAA_classA5_3 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...234.`) %>% 
+  mutate(class = "A", 
+         name = "GmIAA27")
+
+# class B
+IAA_classB1 <- data.frame(get_taxa_name(p, node = 261)) # IAA31 - Class B
+IAA_classB1 <- IAA_classB1 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...261.`) %>% 
+  mutate(class = "B", 
+         name = "GmIAA31")
+
+IAA_classB2 <- data.frame(get_taxa_name(p, node = 214)) # IAA12/13 - Class B
+IAA_classB2 <- IAA_classB2 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...214.`) %>% 
+  mutate(class = "B", 
+         name = "GmIAA12-13")
+
+IAA_classB3 <- data.frame(get_taxa_name(p, node = 200)) # IAA18,26,28 - Class B
+IAA_classB3 <- IAA_classB3 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...200.`) %>% 
+  mutate(class = "B", 
+         name = "GmIAA18/26/28")
+
+# Class C
+IAA_classC1 <- data.frame(get_taxa_name(p, node = 183)) # IAA29 - Class C
+IAA_classC1 <- IAA_classC1 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...183.`) %>% 
+  mutate(class = "C", 
+         name = "GmIAA29")
+
+IAA_classC2 <- data.frame(get_taxa_name(p, node = 193)) # IAA32,34 - Class C
+IAA_classC2 <- IAA_classC2 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...193.`) %>% 
+  mutate(class = "C", 
+         name = "GmIAA32/34")
+
+IAA_classC3 <- data.frame(get_taxa_name(p, node = 335)) # IAA15 - Class C
+IAA_classC3 <- IAA_classC3 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...335.`) %>% 
+  mutate(class = "C", 
+         name = "GmIAA15")
+
+IAA_classC4 <- data.frame(get_taxa_name(p, node = 338)) # IAA33 - Class C
+IAA_classC4 <- IAA_classC4 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...338.`) %>% 
+  mutate(class = "C", 
+         name = "GmIAA33")
+
+# nodes close to the root will are class C and will be missing labels so we can just assign them
+
+IAA_class <- rbind(IAA_classA1, IAA_classA1b, IAA_classA2, IAA_classA3, IAA_classA4, IAA_classA5_2, IAA_classA5_3, IAA_classB1, IAA_classB2, IAA_classB3, IAA_classC1, IAA_classC2, IAA_classC3, IAA_classC4)
+
+# We MUST to assign orthology in this step so tip order does not get messed up
+IAA_class <- IAA_class %>%  mutate(ensembl_gene_id = str_remove_all(.$tair_locus, "\\.[^.]*$"))
+
+IAA_Gm <- IAA_class %>% dplyr::filter(str_detect(ensembl_gene_id, "Glyma")) %>% 
+  group_by(name) %>%  mutate(ortholog_name = row_number()) %>% mutate(ortholog_name = paste0( name, "-", LETTERS[ortholog_name]))
+
+# write_csv(IAA_Gm, "IAA_Gm_ortholog.csv")
+
+#merge IAA_class with IAA_Gm
+IAA_class2 <- merge(IAA_class, IAA_Gm, by="tair_locus", all=TRUE)
+IAA_class2 <- IAA_class2 %>% dplyr::select(tair_locus, class = class.x, 
+                      name =name.x, ensembl_gene_id=ensembl_gene_id.x, 
+                      ortholog_name)
+
+# now we can merge IDs(line 311) according to tair_locus to preserve the Glyma genes and annotation but not the A. thaliana
+dfTEST <- merge(IAA_class2,IDs, by=c("tair_locus"), all=TRUE)
+dfTEST[c(1:29), c(2)] <- NA
+
+dfTEST2 <-dfTEST %>% unite("ortholog_name", ortholog_name:name.y, sep = "/", na.rm = T) %>% 
+  dplyr::relocate(class.y, .after = class.x) %>% 
+  unite("class", class.x:class.y, na.rm = T) %>%  
+  mutate(ensembl_gene_id = str_remove_all(.$tair_locus, "\\.[^.]*$")) %>% .[,-3]
+
+# write_csv(dfTEST2, "LABELS2_20221223.csv")
+
+# Gm_tips2 <- Gm_tips %>% 
+#   mutate(ortho_number = strex::str_after_nth(.$tair_locus, "\\.", 2)) %>% # Not needed for trees
+#   unite("ortholog_name", ortholog_name:ortho_number, sep = ".", remove = FALSE) %>% .[, -7]
+```
+
+Now we can finally create trees with the tips labeled according to orthology as well.
+Keep old logic for coloring Species and shapes.
+```{r}
+dfTEST2 <- read_csv("LABELS2_20221223.csv")
+
+#set tip color based on species
+tipLabel <- dfTEST2 %>% 
+   dplyr::mutate(tip_color = ifelse(str_detect(ortholog_name, 
+                                               "At", negate = TRUE), 
+                                    "TO_not", ortholog_name))
+
+tipLabel2 <- tipLabel %>% 
+   mutate(tip_color = ifelse(str_detect(tip_color, "At", negate = FALSE), "TO_color", tip_color))
+
+tipLabel2 <- tipLabel2 %>% dplyr::relocate(ortholog_name, everything())
+```
+
+Build tree again
+```{r}
+tree <- treeio::read.mrbayes(file = "mb_results_mult_final/IAAmult_final5.nex.con.tre")
+
+#change tree tip.label
+tree@phylo[["tip.label"]] <- dfTEST2[[4]][match(tree@phylo[["tip.label"]], dfTEST2[[1]])]
+
+p <- ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) +
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = -.1, nudge_y = .1, hjust = -.05, size = 1.5)
+p
+
+(p2 <- p %<+% tipLabel2[,-c(2,4)]  + 
+  geom_tippoint(aes(fill=factor(Species)), 
+                size=3.5, shape=21) + geom_tiplab( size=3, hjust=-.1, align = T) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) +
+    #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species"))
+  )
+
+p4 <- p %<+% tipLabel2[,-c(2,4)]   + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T ) +
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) + 
+  geom_point(aes( color=Species, shape=class), size=3) +  
+   theme(legend.text = element_text(face = "italic"))+
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(.95,0.1))  
+
+p4
+p4 + scale_colour_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) 
+
+
+ggsave("figures/IAA_FINAL.pdf", height = 18, width = 18, dpi = 800)
+
+ggsave("figures/IAA_FINAL.png", height = 18, width = 18, dpi = 800)
+```

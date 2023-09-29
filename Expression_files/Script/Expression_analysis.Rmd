@@ -1,0 +1,484 @@
+---
+title: "Expression analysis of AFB gene Family"
+author: "Deisiany"
+date: "2022-08-31"
+output: 
+  html_document: 
+    fig_width: 11
+    fig_height: 9
+---
+Literature cited
+
+Wang et al.: RNA-seq analyses of multiple meristems of soybean: novel and alternative transcripts, evolutionary and functional implications. BMC Plant Biology 2014 14:169.
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) # wrangling data
+#library(readr)
+library(magrittr) #for lots of pipes
+#library(dplyr)
+#library(biomaRt)
+#library(ggbeeswarm)
+#library(stringr)
+library(ggplot2)
+#library(ggrepel)
+#library(forcats)
+
+#setwd("~/GitHub/SoyArcs_manuscript/Expression_files/Script")
+```
+# Background
+
+This Markdown aims to explore the expression analysis of soybean (**Glycine max** Williams 82 cultivar). The data used in this analysis were downloaded from Wang et al. 2014 and !(soybase)[https://soybase.org/soyseq/tables_lists/index.php] on August 25th of 2022.
+The raw data was them processed unsing salmon quant tool under !(Galaxy)[https://usegalaxy.org/]. 
+
+# Create a correspondence table
+
+We used different version for expression analysis data and phylogenetic analysis because of their availability. We also used expression data from two different source, NCBI and soybase and stated in our manuscript. Because the data was used from "different" sources and sometimes we needed to go back and fourth between versions we need to create a correspondence table merging all this information since gene IDs do change in between versions.
+
+Also,
+"There are several versions of the Glycine max reference genome (Williams-82 cultivar). So we need to make a correspondence table for the gene IDs in different versions, because the datasets that we're trying to combine were initially assembled with different genome versions."
+
+Correspondence table can be found in ![soybase](https://www.soybase.org/correspondence/).
+
+*Before getting started with AFB genes I need to get all gene IDs and trancripts and put them together.*
+Once we have all genes in one organized table we can start trimming it down for each protein family.
+
+```{r}
+# Read in csvs from ENSEMBL (downloaded [by John?] on Apr 23, 2020)
+
+IAAs <- read_csv(file = "../Downloaded_John/Gly_IAAs__ENSEMBL.csv")
+AFBs <- read_csv(file = "../Downloaded_John/Gly_AFBs_ENSEMBL.csv")
+ARFs <- read_csv(file = "../Downloaded_John/Gly_ARFs_ENSEMBL.csv")
+
+
+# Make a vector for query later of the unique genes 
+genes <- c(unique(AFBs$`Gene stable ID`),
+           unique(IAAs$`Gene stable ID`), 
+           unique(ARFs$`Gene stable ID`))
+
+# write.csv(genes, "genes.csv")
+
+```
+
+We also want to select gene ids and information in ensembl using the biomaRt function. 
+So, we can later compare phylogenetic analysis (made using gene IDs) and expression analysis (given in transcript IDs).
+```{r}
+soy_ensembl <- biomaRt::useMart("plants_mart", host="https://plants.ensembl.org", dataset = "gmax_eg_gene")
+biomaRt::listAttributes(soy_ensembl)
+biomaRt::listFilters(soy_ensembl)
+
+output <- biomaRt::getBM(attributes=c("ensembl_gene_id", 
+                                      "ensembl_transcript_id", 
+                                      "chromosome_name", "start_position",
+                                   "end_position", "strand", 
+                                   "transcript_start", 
+                                   "transcript_end"), 
+                         filters="ensembl_gene_id", 
+                         values = genes,
+                          mart=soy_ensembl)
+
+
+```
+
+
+Read in tabular file obtained from salmon quantification files (expression data)
+```{r}
+library(readr)
+AM<-read_tsv(file="../Downloaded_John/Galaxy79-Salmon_quant_on_SoyAMQuantification.tabular")
+OF<-read_tsv(file="../Downloaded_John/Galaxy80-Salmon_quant_on_Soy_OFQuantification.tabular")
+IBM<-read_tsv(file="../Downloaded_John/Galaxy81-Salmon_quant_on_Soy_IBMQuantification.tabular")
+IAM<-read_tsv(file="../Downloaded_John/Galaxy82-Salmon_quant_on_Soy_IAMQuantification.tabular")
+SAM6D<-read_tsv(file="../Downloaded_John/Galaxy83-Salmon_quant_on_SAM_6DQuantification.tabular")
+SAM17D<-read_tsv(file="../Downloaded_John/Galaxy84-Salmon_quant_on_SAM_17DQuantification.tabular")
+
+SAM38D <-read_tsv(file="../Downloaded_John/Galaxy89-Salmon_quant_on_SAM_38DQuantification.tabular")
+
+RootTip<-read_tsv(file="../Downloaded_John/Galaxy85-Salmon_quant_on_Root_tipQuantification.tabular")
+Callus<-read_tsv(file="../Downloaded_John/Galaxy86-Salmon_quant_on_Soy_CallusQuantification.tabular")
+
+Hypocotyl<-read_tsv(file="../Downloaded_John/Galaxy87-Salmon_quant_on_Soy_hypocotylQuantification.tabular")
+
+Cotyledon<-read_tsv(file="../Downloaded_John/Galaxy88-Salmon_quant_on_Soy_CotyledonQuantification.tabular")
+
+
+# data from soy atlas [https-::soybase.org:soyseq:tables_lists:index.php]
+Leaf <- read_tsv(file = "../https-::soybase.org:soyseq:tables_lists:index.php/8A_young_leaf_Galaxy64-[Salmon_quant_on_data_61_and_data_1_(Quantification)].tabular")
+
+Root <- read_tsv(file = "../https-::soybase.org:soyseq:tables_lists:index.php/9A_Root_Galaxy66-[Salmon_quant_on_data_63_and_data_1_(Quantification)].tabular")
+
+Nodule <- read_tsv(file = "../https-::soybase.org:soyseq:tables_lists:index.php/10A_nodule_Galaxy65-[Salmon_quant_on_data_62_and_data_1_(Quantification)].tabular")
+
+```
+
+And then we can join the expression data from salmon quant to the `output` from biomart by the ensembl transcript id. So we have both the gene IDs and transcripts to compare later. 
+
+```{r}
+# Need to initially add the tissue suffix to each column after Name to keep track of all of the counts
+
+AM <- dplyr::rename_with(AM , ~paste(.x, "AM", sep = "."), -Name)
+OF <- dplyr::rename_with(OF , ~paste(.x, "OF", sep = "."), -Name)
+IBM <- dplyr::rename_with(IBM , ~paste(.x, "IBM", sep = "."), -Name)
+IAM <- dplyr::rename_with(IAM , ~paste(.x, "IAM", sep = "."), -Name)
+SAM6D <- dplyr::rename_with(SAM6D , ~paste(.x, "SAM6D", sep = "."), -Name)
+SAM17D <- dplyr::rename_with(SAM17D , ~paste(.x, "SAM17D", sep = "."), -Name)
+SAM38D <- dplyr::rename_with(SAM38D , ~paste(.x, "SAM38D", sep = "."), -Name)
+RootTip <- dplyr::rename_with(RootTip , ~paste(.x, "RootTip", sep = "."), -Name)
+Callus <- dplyr::rename_with(Callus , ~paste(.x, "Callus", sep = "."), -Name)
+Hypocotyl <- dplyr::rename_with(Hypocotyl , ~paste(.x, "Hypocotyl", sep = "."), -Name)
+Cotyledon <- dplyr::rename_with(Cotyledon , ~paste(.x, "Cotyledon", sep = "."), -Name)
+Leaf <- dplyr::rename_with(Leaf, ~paste(.x, "Leaf", sep = "."), -Name)
+Root <- rename_with(Root, ~paste(.x, "Root", sep = "."), -Name)
+Nodule <- rename_with(Nodule, ~paste(.x, "Nodule", sep = "."), -Name)
+
+# We can now join them
+combined <- dplyr::left_join(output, AM, by = c("ensembl_transcript_id" = "Name")) %>% 
+  left_join(OF, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(IBM, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(IAM, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(SAM6D, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(SAM17D, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(SAM38D, by = c("ensembl_transcript_id" = "Name")) %>% 
+  left_join(RootTip, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(Callus, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(Hypocotyl, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(Cotyledon, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(Leaf, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(Root, by = c("ensembl_transcript_id" = "Name")) %>%
+  left_join(Nodule, by = c("ensembl_transcript_id" = "Name"))
+ 
+
+# write the csv file so we don't need to repeat this in the future 
+# write.csv(combined, "combined_expression.csv")
+```
+
+# Expression analysis according to their transcripts
+```{r}
+# Read in document with combined expression data
+combined <- read.csv("combined_expression.csv")
+# read in Gm_IDs file. It contains most of the classification to get started with classifying our expression analysis
+Gm_class <- readxl::read_xlsx("../../Gm_IDs_Class.xlsx")
+
+# join both documents so we can have some classified genes in our expression analysis.
+Expression_df <- left_join(combined, Gm_class, by = c("ensembl_gene_id"= "ensembl_gene_id", "ensembl_transcript_id" = "Transcripts"))
+
+Expression_df <- Expression_df %>% .[,-c(1, 5:12, 14:16, 18:20, 22:24, 26:28, 30:32, 34:36, 38:40, 42:44, 46:48, 50:52, 54:56, 58:60, 62:64, 66:68)]
+
+# Save progress for later. And also to make it easier the comparison between transcripts and gene IDs.
+# write_csv(Expression_df, "Expression_df.csv")
+# READ AGAIN THE DATA-FRAME. Note: I had also annotated according to Trees.
+Expression_df <- read_csv("Expression_df_annotated.csv")
+
+# We might also need the Class and transcripts in a different dataframe
+Expression_df["class_9FAMILY_BASED"][is.na(Expression_df["class_9FAMILY_BASED"])] <- "NA"
+
+class <- Expression_df %>% select(Class=class_9FAMILY_BASED, ensembl_transcript_id, ensembl_gene_id, Family=Function.y, TPM.AM)
+class["Family"][is.na(class["Family"])] <- "TDB"
+
+class1 <- class %>% drop_na() # %>% .[,-c(4)] 
+
+rownames(class1)  =  make.names(class1$ensembl_gene_id, unique=TRUE)
+class1 <- class1[,-c(1,2)]
+class1 <- column_to_rownames(class1, var = "ensembl_gene_id") 
+
+# Drop ensembl_gene_id column so we can focus on the transcripts name and expression
+expression <- Expression_df %>% select(starts_with(c("ensembl_gene_id", "TPM"))) %>% select(., !TPM.OF)
+
+
+# Build heatmap that has both gene expression and class
+expression1 <- drop_na(expression) 
+
+colnames(expression1) <- sub("TPM.", "", colnames(expression1))
+
+expression1 <-  (expression1) #remove row.names so we can add gene ids as row.names
+rownames(expression1)  <-  make.names(expression1$ensembl_gene_id, unique=TRUE)
+expression1 <- expression1[,-c(1,2)]
+# expression1 <- tibble::column_to_rownames(expression1, "ensembl_gene_id") 
+
+
+# Build Heatmap 
+# library(dendextend)
+library(pheatmap)
+
+expression2 <- log10(expression3)
+
+  #ifelse(expression1 > 0, log10(expression1), expression1)
+expression2[expression2 == -Inf] <- 0 
+
+
+pheatmap::pheatmap(mat = expression2,  annotation_row = class1, 
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cutree_cols = 4,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         main = "Expression analysis")  # the whole expression is to much for the heat map. I will break it down by gete family
+
+expr_soy <- pheatmap(mat = expression1,  annotation_row = class1, 
+         fontsize = 5,
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300,
+         main = "Expression analysis")
+
+save_pheatmap_pdf(expr_soy, "expr_soy.pdf", height = 11, width = 7)
+
+normalized_heat <- pheatmap::pheatmap(mat = expression1,  annotation_row = class1, 
+         fontsize = 5,
+         fontsize_row = 3,
+         cellwidth = 4,
+         cellheight = 2, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300,
+         scale="column",
+         main = "Expression analysis")
+
+pheatmap::pheatmap(mat = expression2,  annotation_row = class1, 
+         fontsize = 5,
+         fontsize_row = 3,
+         cellwidth = 4,
+         cutree_rows = 10,
+         cutree_cols = 3,
+         cellheight = 2, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300,
+         scale="column",
+         main = "Expression analysis")
+
+
+
+log10_soy <- pheatmap::pheatmap(mat = expression2,  annotation_row = class1,  
+         fontsize = 5,
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300,
+         main = "Expression analysis")
+
+save_pheatmap_pdf(log10_soy, "log10_soy.pdf", height = 11, width = 7)
+
+
+```
+https://github.com/EmilHvitfeldt/r-color-palettes
+
+
+# Break down expression analysis for each auxin protein family
+
+## *AFB*
+
+```{r}
+# Read in document with annotated expression data (annotation was based on philogeny trees)
+Expression_annotated <- read.csv("Expression_df_annotated.csv")
+
+# Select only AFB family
+Gm_AFB <- Expression_annotated[grep("AFB", Expression_annotated$Function.y),]
+
+class_AFB <- select(Gm_AFB, 
+                    ensembl_transcript_id, 
+                    Function2, TPM.AM) %>% 
+  drop_na() %>% 
+  select(., ensembl_transcript_id, Function2)
+
+rownames(class_AFB) <- class_AFB$ensembl_transcript_id
+class_AFB <-  select(class_AFB, Function2)
+
+# Now select only columns that has the transcript IDs and expression data
+exp_AFB <- select(Gm_AFB, Transcripts=ensembl_transcript_id, 
+                  AM=TPM.AM, OF=TPM.OF, IBM=TPM.IBM, IAM=TPM.IAM, 
+                  SAM6D=TPM.SAM6D, SAM17D=TPM.SAM17D, 
+                  SAM38D=TPM.SAM38D, RootTip=TPM.RootTip, 
+                  Callus=TPM.Callus, Hypocotyl=TPM.Hypocotyl, 
+                  Cotyledon=TPM.Cotyledon, Leaf=TPM.Leaf, 
+                  Root=TPM.Root, Nodule=TPM.Nodule)
+
+rownames(exp_AFB) <- NULL
+
+exp_AFB2 <- column_to_rownames(exp_AFB, var="Transcripts") %>% drop_na()
+
+
+AFB_heatmap <- pheatmap(exp_AFB2, annotation_row = class_AFB, 
+         fontsize = 8,
+         main = "AFB gene family expression analysis") 
+
+
+```
+
+# Save pheatmap function
+```{r}
+# Source:
+# https://stackoverflow.com/questions/43051525/how-to-draw-pheatmap-plot-to-screen-and-also-save-to-file
+save_pheatmap_pdf <- function(x, filename, width=7, height=4) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   pdf(filename, width=width, height=height)
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+
+save_pheatmap_pdf(AFB_heatmap, "test.pdf")
+
+# https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+  
+save_pheatmap_png <- function(x, filename, width=1200, height=1000, res = 150) {
+  png(filename, width = width, height = height, res = res)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+ 
+save_pheatmap_png(my_heatmap, "my_heatmap.png")
+```
+
+
+```{r}
+#### CLEAN UP
+
+# first we need to change combined documents gene IDs annotation because they are written slightly different in the phylogeny files.
+combined$ensembl_gene_id <- combined$ensembl_gene_id %>% str_replace_all("GLYMA_", "Glyma.")
+
+# We also need to have the combined data frame as long data layout
+combined_long <- combined %>% pivot_longer(c(TPM.AM, TPM.OF, TPM.IAM, TPM.IBM, TPM.RootTip, TPM.Cotyledon, TPM.Hypocotyl, TPM.SAM6D, TPM.SAM17D, TPM.SAM38D, TPM.Callus, TPM.Leaf, TPM.Root, TPM.Nodule), names_to = "variable", values_to = "TPM")
+
+# write.csv(combined_long, "combined_long.csv")
+combined_long <- read.csv("combined_long.csv")
+
+# Select only AFB genes from combined table
+AFBs$`Gene stable ID` <- AFBs$`Gene stable ID` %>% str_replace_all("GLYMA_", "Glyma.")
+AFBs
+
+(AFB_unique <- unique(AFBs[c("Gene stable ID", "Transcript stable ID")]))
+
+# Join both data frames using their Transcript IDs because there are more than one transcript per gene. That way we can better compare our expression analysis for each gene in our phylogeny
+AFB_unique_expression <- left_join(AFB_unique, combined_long, by=c("Transcript stable ID" = "ensembl_transcript_id"))
+
+# write.csv(AFB_unique_expression, "AFB_unique_expression.csv")
+AFB_unique_expression <- read.csv("AFB_unique_expression.csv")
+```
+# AFB heatmap
+We want to create an interactive heatmap and because of that we need to have the gene IDs from MrBayes and Combined_long AFB file match.
+
+
+```{r}
+library(heatmaply)
+
+AFB_map <- AFB_unique_expression %>% 
+  dplyr::select(`Gene stable ID`, variable, TPM) %>% 
+  group_by(variable) %>% mutate(row = row_number()) %>% 
+  pivot_wider( names_from = variable, values_from = TPM)  %>% 
+  rename_at(vars(starts_with("T")), 
+                                   funs(str_replace(., "TPM.", "")))  %>%
+  rename_at(vars(starts_with("S")), 
+                                         funs(str_replace(., "Soy_", ""))) %>% .[,-2]
+# Drop NA
+AFB_map2 <- drop_na(AFB_map)
+
+
+heatmaply::heatmaply(AFB_map2)
+
+
+```
+
+# General gene expression heatmap
+For this one I have gone through the data frame "Gm_Gene_IDs" from previous analysis and put a new table containing all the transcripts, ensembl gene IDs, and group them by the families that they belong to (AFB, ARF, and IAA). That way we can now join all the Expression data and gene IDs used for the *G. max* phylogenies to better visualize their expression in each tissue.
+
+```{r}
+# Transform data into wide data
+
+Expression_data <- combined_long %>% 
+  dplyr::select(ensembl_gene_id, ensembl_transcript_id, variable, TPM) %>% 
+  group_by(variable) %>% #mutate(row = row_number()) %>% 
+  pivot_wider( names_from = variable, values_from = TPM)  %>% 
+  rename_at(vars(starts_with("T")), 
+                                   funs(str_replace(., "TPM.", "")))  %>%
+  rename_at(vars(starts_with("S")), 
+                                         funs(str_replace(., "Soy_", "")))
+```
+
+Let's combine the classified dataframes with the old one that has transcripts IDs to the gene IDs for the final phylogenies. Once we have that we can plot them all. I am also going to need to make gene IDs unique with .(number) at the end of each gene ID because for heatmap plotting we need to convert rows to column names and they MUST be unique for that. We can convert gene ID to transcripts back at any time.
+```{r}
+
+# Read in IDs used to build phylogenies and then join both tables to get a better heatmap
+Gm_tree_IDs <- readxl::read_xlsx("../../Gm_IDs.xlsx", sheet="Gm_IDs")
+Gm_tree_IDs$ensembl_gene_id <- Gm_tree_IDs$ensembl_gene_id %>% str_replace_all("GLYMA_", "Glyma.")
+Gm_tree_IDs
+
+IAA_class <- readxl::read_xlsx("../../final_trees/IAA_input/IAA_Classes.xlsx", sheet="Glyma_classes")
+ARF_class <- readxl::read_xls("../../final_trees/ARF_input/ARF_classes.xls", sheet="Glyma_Class")
+
+# Now lets combine all classified Gm IDs to a single document
+Gm_tree_IDs <- merge(Gm_tree_IDs, IAA_class, by.x=c("ensembl_gene_id", "class_9FAMILY_BASED", "name", "Function"), by.y=c("ensembl_gene_id", "IAA Class", "names", "Function"), all=T)
+Gm_tree_IDs <- merge(Gm_tree_IDs, ARF_class, by.x=c("ensembl_gene_id", "class_9FAMILY_BASED", "name", "Function"), by.y=c("ensembl_gene_id", "ARF_Class", "name", "Function"), all=T)
+
+# write_csv(Gm_tree_IDs, "Gm_tree_IDs_FINAL.csv") # we can annotate the IDs that are missing manually and make sure everything is correct before making final expression analysis
+# We also want to have a data frame that has all gene information. For that we will join the  Gm_tree_IDs classified to the combined_long data and save it 
+combined_expression_EDITED <- readxl::read_xls("combined_expression_EDITED.xls")
+combined_expression_EDITED$ensembl_gene_id <- combined_expression_EDITED$ensembl_gene_id %>% str_replace_all("GLYMA_", "Glyma.")
+combined_expression_EDITED_final <- merge(Gm_tree_IDs, combined_expression_EDITED, by.x=c("ensembl_gene_id", "class_9FAMILY_BASED", "Transcripts"), by.y=c("ensembl_gene_id", "Class", "ensembl_transcript_id"), all=T)
+
+# write_csv(combined_expression_EDITED_final, "combined_expression.csv") # final1 was manually checked and annotated. And is now ready to submit as supplement table. File name is "combined_expression_EDITED_final.xls"
+
+combined_expression <- readxl::read_xls("combined_expression_EDITED_final.xls")
+
+# Lets also remove columns that we will not use in downstream analysis.
+# We also need to have the combined data frame as long data layout
+combined_expression_long <- combined_expression %>%  pivot_longer(c(TPM.AM, TPM.OF, TPM.IAM, TPM.IBM, TPM.RootTip, TPM.Cotyledon, TPM.Hypocotyl, TPM.SAM6D, TPM.SAM17D, TPM.SAM38D, TPM.Callus, TPM.Leaf, TPM.Root, TPM.Nodule), names_to = "variable", values_to = "TPM") %>% dplyr::select(name, Transcripts, Class, Function, Function2, variable, TPM)
+
+# Now we need to transform data into wide data again
+Expression_data <- combined_expression_long %>% 
+  dplyr::select(name, Transcripts, variable, TPM) %>% 
+  group_by(variable) %>% #mutate(row = row_number()) %>% 
+  pivot_wider( names_from = variable, values_from = TPM)  %>% 
+  rename_at(vars(starts_with("T")), 
+                                   funs(str_replace(., "TPM.", "")))  %>%
+  rename_at(vars(starts_with("S")), 
+                                         funs(str_replace(., "Soy_", "")))
+
+
+```
+#Notes:
+ *combined_expression_long was manually checked and annotated. And is now ready to submit as supplement table. File name is "combined_expression_EDITED_final.xls"
+I have annotated the gene IDs so they would all be unique. That means that their .1, .2, and so on may not be accurate, but their transcripts are and can be checked easily with the table. Which will give us the transcripts that are most expressed and can be used in downstream analysis.
+```{r}
+# Build matrix for heatmap test
+expression_test <-  Expression_data %>% .[,-2] %>% column_to_rownames( "name")
+
+# Build heat map
+is.na(expression_test)
+heatmaply::heatmaply(drop_na(expression_test))
+
+# We also need to assign groups such as AtAFB2 so we can identify the transcripts for it.
+```
+
+
+####### We may need this is the future if there is any differences between the soybean versions we have been using.
+Are we going to need this??????
+```{r}
+(corr_v4 <- read.csv(file="../../Wm82.a4.v1_to_Correspondence_Full.csv", head=T, sep=",", skip = 1)) # Skip first column because it is just the soybase link and we do not need it for analysis!
+
+# Read in table that contains AFB gene IDs identified in BLAST search
+(All_IDs <- read.csv("../all_IDs.csv"))
+Glyma_IDs <- All_IDs %>%  filter(str_detect(gene_IDs,"Glyma")) %>% select(-X)
+Glyma_IDs$gene_IDs <- gsub(",", "", Glyma_IDs$gene_IDs)
+
+# Also remove .Number at the end of gene ID for comparison purposes.
+Glyma_IDs$gene_IDs <- gsub("\\.[0-9]$", "", Glyma_IDs$gene_IDs)
+Glyma_IDs
+
+# join the AFB_genes data that matches up with the corr_v4 data.
+AFB_genes <- left_join(x = Glyma_IDs, y = corr_v4, 
+                       by = c("gene_IDs" = "Wm82.a4.v1.Gene"))
+
+```
+
+
+
+```{r}
+
+```
+

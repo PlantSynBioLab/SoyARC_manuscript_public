@@ -1,0 +1,881 @@
+---
+title: "Expression analysis final!"
+author: "Deisiany"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(heatmaply)
+library(tidyverse) # wrangling data
+#library(readr)
+library(magrittr) #for lots of pipes
+#library(dplyr)
+#library(biomaRt)
+#library(ggbeeswarm)
+#library(stringr)
+library(ggplot2)
+#library(ggrepel)
+#library(forcats)
+library(pheatmap)
+library(devtools)
+#install_github("vqv/ggbiplot")
+library(ggbiplot) # For plotting PCA
+```
+
+
+
+```{r Save pheatmap function}
+# Source:
+# https://stackoverflow.com/questions/43051525/how-to-draw-pheatmap-plot-to-screen-and-also-save-to-file
+save_pheatmap_pdf <- function(x, filename, width=7, height=4) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   pdf(filename, width=width, height=height)
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+
+
+
+# https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+  
+save_pheatmap_png <- function(x, filename, width=1200, height=1000, res = 150) {
+  png(filename, width = width, height = height, res = res)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+ 
+
+
+```
+
+Expression analysis data with all gene IDs and gene information needed for heatmap generation.
+```{r}
+combined_expression <- readxl::read_xls("combined_expression_EDITED_final.xls")
+
+# Lets also remove columns that we will not use in downstream analysis.
+# We also need to have the combined data frame as long data layout
+combined_expression_long <- combined_expression %>%  pivot_longer(c(TPM.AM, TPM.OF, TPM.IAM, TPM.IBM, TPM.RootTip, TPM.Cotyledon, TPM.Hypocotyl, TPM.SAM6D, TPM.SAM17D, TPM.SAM38D, TPM.Callus, TPM.Leaf, TPM.Root, TPM.Nodule), names_to = "variable", values_to = "TPM") %>% dplyr::select(name, Transcripts, Class, Family, Sub_Family, variable, TPM)
+
+# Now we need to transform data into wide data again
+Expression_data <- combined_expression_long %>% 
+  dplyr::select(name, Class, Family, Sub_Family, variable, TPM) %>% 
+  group_by(variable) %>% #mutate(row = row_number()) %>% 
+  pivot_wider( names_from = variable, values_from = TPM)  %>% 
+  rename_at(vars(starts_with("T")), 
+                                   funs(str_replace(., "TPM.", "")))  %>%
+  rename_at(vars(starts_with("S")), 
+                                         funs(str_replace(., "Soy_", "")))
+
+```
+
+Merge both expression_data with the tables generated on Dec 23 of 2022 based on tree nodes. Thus we will update these old df and make sure things are now corrected accordingly.
+```{r}
+AFB_Gm_ortholog <- read_csv("../../final_trees/AFB_input/AFB_Gm_ortholog.csv")
+
+Expression_data2 <- Expression_data %>% dplyr::rename(tair_locus = name) %>% dplyr::select(.,  -Sub_Family) %>% dplyr::mutate(ensembl_gene_id = str_remove_all(tair_locus, "\\.[0-9]*$"))
+
+Expr_data <- merge(AFB_Gm_ortholog, Expression_data2, by= c("ensembl_gene_id", "tair_locus"), all=T)
+
+# Join most updated annotated ARFs to expr_data
+ARF_Gm_ortholog <- read_csv("../../final_trees/ARF_input/ARF_Gm_ortholog.csv")
+
+Expr_data2 <- merge(ARF_Gm_ortholog, Expr_data, by= c("ensembl_gene_id", "tair_locus"), all=T)
+
+Expr_data2 <- Expr_data2 %>% dplyr::relocate(ortholog_name.x, 
+                               .after = ortholog_name.y) %>% 
+  dplyr::relocate(name.x, .after = name.y) %>% 
+  unite("name", name.y:name.x, na.rm=T) %>% 
+  unite("ortholog_name", ortholog_name.y:ortholog_name.x, na.rm=T) %>% 
+  unite("class", class.x:class.y, na.rm=T)
+
+# Add IAAs to data frame
+IAA_Gm_ortholog <- read_csv("../../final_trees/IAA_input/IAA_Gm_ortholog.csv")
+
+Expr_data3 <- merge(IAA_Gm_ortholog, Expr_data2, by= c("ensembl_gene_id", "tair_locus"), all=T)
+
+Expr_data3 <- Expr_data3 %>% dplyr::relocate(ortholog_name.x, 
+                               .after = ortholog_name.y) %>% 
+  dplyr::relocate(name.x, .after = name.y) %>% 
+  unite("name", name.y:name.x, na.rm=T, sep = "") %>% 
+  unite("ortholog_name", ortholog_name.y:ortholog_name.x, na.rm=T, sep = "") %>% 
+  unite("class", class.x:class.y, na.rm=T, sep = "")
+
+# Write a new document and make sure annotation is correct, edit it and read it back.
+write_csv(Expr_data3, "Expr_data3_toBEedited.csv")
+
+```
+
+Read dataframe manually checked back in to get started with normalization.
+Here we also want to drop gene IDs that has NA in expression.
+```{r}
+Expr_data3_FINAL <- read_csv("Expr_data3_FINAL_edited.csv")
+
+Expr_data3_FINAL <- Expr_data3_FINAL %>% drop_na() %>%  dplyr::select(., -class)
+
+# Unite Tair_locus with ortholog_name columns
+Expr_data3_FINAL2 <- Expr_data3_FINAL %>% dplyr::relocate(ortholog_name, .before = tair_locus) %>% 
+  unite("heatmap_label", ortholog_name:tair_locus, sep = "/", remove = FALSE) %>% 
+  mutate(ortholog_number = str_extract(tair_locus, "\\.[0-9]*$")) %>% 
+  dplyr::relocate(ortholog_number, .after = ortholog_name ) %>% 
+  unite("ortholog_number", ortholog_name:ortholog_number, sep = "")
+
+```
+* January 1, 2023
+
+# Normalization by transcript
+
+```{r}
+
+Expr_data3_Norm <- Expr_data3_FINAL2
+
+for (j in 1:nrow(Expr_data3_Norm)) {
+for (i in 8:ncol(Expr_data3_Norm)) { 
+  Expr_data3_Norm[j,i]<- 
+    (Expr_data3_Norm[j,i]-rowMeans(Expr_data3_Norm[j,8:ncol(Expr_data3_Norm)]))/
+    sd(Expr_data3_Norm[j,8:ncol(Expr_data3_Norm)]) 
+}
+}
+
+Expr_data3_Norm <-Expr_data3_Norm %>% drop_na() %>% column_to_rownames(., var = "heatmap_label")
+
+```
+
+## Build heatmap with normalized data
+```{r}
+pheatmap::pheatmap(mat = Expr_data3_Norm[,7:20],  annotation_row = Expr_data3_Norm[,c(4,6)], 
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cutree_cols = 4,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         main = "Expression analysis")  # the whole expression is to much for the heat map. I will break it down by get family
+
+
+# Specify colors
+Class_df1_colors = list(Family = c(ARF = "Purple", IAA = "yellow", `AFB/TIR1`="lightblue"), Class = c(A="purple", B="lightseagreen", C="orange", TIR1="green", `AFB2/3`="blue", `AFB4/5`="yellow", COI1="pink", AFB6="pink2", `COI1-A`="pink1", `COI1-A`="pink3"))
+
+(expr_analysis <- pheatmap::pheatmap(mat = Expr_data3_Norm[,7:20],  annotation_row = Expr_data3_Norm[,c(4,6)], annotation_colors = Class_df1_colors[1],
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300, 
+         cutree_rows = 6, 
+         main = "Expression analysis - normalized by transcripts",
+        color = c("mistyrose", "white", "mistyrose2", "lightpink", "lightblue", "turquoise", "lightslateblue")))
+
+save_pheatmap_pdf(expr_analysis, "FINAL_NORM_by_Transcript_expr_7clusters.pdf", height = 11, width = 7)
+```
+
+### PCA with transcripts normalized
+* Note that we do not scale here since the data is already normalized. "scale" is built within the function `prcomp` normalizes the data when we set it to TRUE. Additionally, the scale argument is by default equal to FALSE. More information can be found here: https://stat.ethz.ch/R-manual/R-devel/library/base/html/scale.html 
+```{r}
+transcript_pca_data <- Expr_data3_Norm  %>% dplyr::select(ortholog_number, Family, AM, Cotyledon, Hypocotyl, SAM6D, SAM17D, SAM38D, Leaf ) 
+
+transcript_pca <- prcomp(transcript_pca_data[,-c(1:2)], scale. = F)
+summary(transcript_pca)
+
+plot(transcript_pca, col="#E5F5F9")
+plot(transcript_pca, type="l", col="#FFC600")
+
+# We can retrieve this x values for both PC1 and PC2 which are the PCs that accounts for most of the variation in the data and attach them to our expression data to make a better visualization
+transcript_pca_expr_data <- cbind(dplyr::select(.data = Expr_data3_Norm, ortholog_number, Family, AM, Cotyledon, Hypocotyl, SAM6D, SAM17D, SAM38D, Leaf ), transcript_pca$x[, 1:3])
+
+Class <- transcript_pca_expr_data$Family
+
+transcript_PCA_loadings <- data.frame(Variables=rownames(transcript_pca$rotation), transcript_pca$rotation)
+
+
+(PC1_2 <- ggbiplot::ggbiplot(transcript_pca, obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE) + 
+    geom_segment(transcript_PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8), yend=(PC2*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(transcript_PCA_loadings$PC1*8.75), #add the transcript names to it manually
+             y=(transcript_PCA_loadings$PC2*8.75), 
+             label=transcript_PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c( "#86C5D8",  "#620093", "#E7C94C"))+
+    ggrepel::geom_text_repel(data=transcript_pca_expr_data, aes(PC1, PC2, label=ortholog_number),
+                           size = 2.5, max.overlaps = 15)
+)
+
+ggsave("../Stats/transcript_expr_PC1_2_Work_NoScale_FINAL.pdf", width = 12, height = 12)
+
+(PC3_2 <- ggbiplot::ggbiplot(transcript_pca, choices = c(2,3),  obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE) + 
+    geom_segment(transcript_PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*8), yend=(PC3*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(transcript_PCA_loadings$PC2*8.75), #add the transcript names to it manually
+             y=(transcript_PCA_loadings$PC3*8.75), 
+             label=transcript_PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c( "#86C5D8",  "#620093", "#E7C94C"))+
+    ggrepel::geom_text_repel(data=transcript_pca_expr_data, aes(PC2, PC3, label=ortholog_number),
+                           size = 2.5, max.overlaps = 10)
+)
+
+ggsave("../Stats/transcript_expr_PC3_2_Work_NoScale_FINAL.pdf", width = 12, height = 12)
+
+
+
+```
+
+Create a plot with only the PCA measurements.
+```{r}
+PC_ex <- ggbiplot::ggbiplot(transcript_pca, obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3, alpha = 0,
+                             var.axes = F, varname.size = 2, 
+                  ellipse = FALSE,  circle = FALSE) + 
+    geom_segment(transcript_PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8), yend=(PC2*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +theme_bw()  +
+    annotate("text", x=(transcript_PCA_loadings$PC1*8.75), #add the transcript names to it manually
+             y=(transcript_PCA_loadings$PC2*8.75), 
+             label=transcript_PCA_loadings$Variables, size=2, color="gray60", fontface="bold")
+ 
+
+
+ggsave(PC_ex, "../Stats/PC_ex_SLide.pdf", width = 12, height = 12)
+
+```
+
+### transcript expression PCA labeling
+#Extract components of our plots to select only genes outside the confidence interval to be plotted
+We are going to use genes outside the 90% interval for Aux/IAAs and ARFs, and 68% (default ellipse ggbiplot) for labeling the genes.
+```{r}
+# Extract components so we can select out 
+PC1_2$data
+build <- ggplot_build(PC1_2)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(transcript_pca_expr_data$PC1, 
+                               transcript_pca_expr_data$PC2, 
+                               as.factor(transcript_pca_expr_data$Family), levels=c(0.68, .9))
+# add geom_point with ellipses point 
+
+ell_points$ARF$`0.9`
+ell_ARF <- as.data.frame(ell_points$ARF[[2]])
+
+ell_points$IAA$`0.9`
+ell_IAA <- as.data.frame(ell_points$IAA[[2]])
+
+ell_points$`AFB/TIR1`$`0.68`
+ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`[[1]])
+
+# Find which points are outside (!) the ellipse, and add this to the data
+library(sp)
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(!point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(!point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y))
+)
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(!point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+
+
+# Combining data points for labeling
+#Combine data points coordinates with PCs and expression data containing gene names will help us to have only genes of interest names, or at list the majority of them.
+
+#Plot all genes that are outside the TIR's confidence interval ellipse
+transcript_expr_logical <- cbind(transcript_pca_expr_data, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+
+PC1_2 + ggrepel::geom_text_repel(data = transcript_expr_logical %>% 
+                          #as_tibble(rownames = "name")%>% 
+                          filter(in.ell_TIR), aes(PC1, PC2, label=ortholog_number), size=2, max.overlaps = 20,
+                        min.segment.length = 0, segment.curvature = -0.1) + theme_test()
+
+
+PC1_2 + ggrepel::geom_text_repel(data=transcript_expr_logical, aes(PC1, PC2, label=ortholog_number),
+                           size = 2.5, max.overlaps = 12)
+
+ggsave("../Stats/transcript_expr_PC1_2_Work_allTranscripts.pdf", width = 12, height = 12)
+
+PC3_2 <- ggbiplot::ggbiplot(transcript_pca, choices = c(2,3), obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE) + 
+    geom_segment(transcript_PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*8), yend=(PC3*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(transcript_PCA_loadings$PC2*8.5), #add the tissue names to it manually
+             y=(transcript_PCA_loadings$PC3*8.5), 
+             label=transcript_PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c( "#86C5D8",  "#620093", "#E7C94C")) + 
+  ggrepel::geom_text_repel(data = transcript_pca_expr_data, aes(PC2, PC3, label=ortholog_number), 
+                          size=2, max.overlaps = 20,
+                        min.segment.length = 0, segment.curvature = -0.1) + 
+  theme_test()
+
+PC3_2
+
+ggsave("../Stats/transcript_expr_PC3_2_Work_allTranscripts.pdf", width = 12, height = 12)
+```
+
+
+
+
+
+
+
+# Normalization by tissue
+
+```{r}
+Expr_data3_Norm_tissue <- Expr_data3_FINAL2
+
+for (j in 1:nrow(Expr_data3_Norm_tissue)) {
+for (i in 8:ncol(Expr_data3_Norm_tissue)) { 
+  Expr_data3_Norm_tissue[j,i]<- 
+    (Expr_data3_Norm_tissue[j,i]-colMeans(Expr_data3_Norm_tissue[1:nrow(Expr_data3_Norm_tissue),i]))/
+    #sapply(Expr_data3_Norm_tissue[7:ncol(Expr_data3_Norm_tissue)], sd) # Calculates each column sd.
+    sd(unlist(Expr_data3_Norm_tissue[1:nrow(Expr_data3_Norm_tissue), i])) 
+}
+}
+
+Expr_data3_Norm_tissue <-Expr_data3_Norm_tissue %>% drop_na() %>% column_to_rownames(., var = "heatmap_label")
+
+
+# Heatmap
+(expr_analysis2 <- pheatmap::pheatmap(mat = Expr_data3_Norm_tissue[,7:20],  annotation_row = Expr_data3_Norm_tissue[,c(4,6)], annotation_colors = Class_df1_colors[1],
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300, 
+         #cutree_rows = 6, 
+         main = "Expression analysis - normalized by tissue",
+        color = c( "white", "mistyrose", "mistyrose2", "lightpink", "lightblue", "turquoise", "lightslateblue")))
+save_pheatmap_pdf(expr_analysis2, "FINAL_NORM_by_Tissue_expr.pdf", height = 11, width = 7)
+
+```
+
+## PCA for normalized TISSUE data
+```{r}
+tissue_pca_data <- Expr_data3_Norm_tissue  %>% dplyr::select(ortholog_number, Family, AM, Cotyledon, Hypocotyl, SAM6D, SAM17D, SAM38D, Leaf ) 
+
+tissue_pca <- prcomp(tissue_pca_data[,-c(1:2)], scale. = T)
+summary(RAW_expr_pca)
+
+plot(tissue_pca, col="#E5F5F9")
+plot(tissue_pca, type="l", col="#FFC600")
+
+# We can retrieve this x values for both PC1 and PC2 which are the PCs that accounts for most of the variation in the data and attach them to our expression data to make a better visualization
+tissue_pca_expr_data <- cbind(dplyr::select(.data = Expr_data3_Norm_tissue, ortholog_number, Family, AM, Cotyledon, Hypocotyl, SAM6D, SAM17D, SAM38D, Leaf ), tissue_pca$x[, 1:3])
+
+Class <- tissue_pca_expr_data$Family
+
+tissue_PCA_loadings <- data.frame(Variables=rownames(tissue_pca$rotation), tissue_pca$rotation)
+
+
+(PC1_2 <- ggbiplot::ggbiplot(tissue_pca, obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE) + 
+    geom_segment(tissue_PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8), yend=(PC2*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(tissue_PCA_loadings$PC1*8.75), #add the tissue names to it manually
+             y=(tissue_PCA_loadings$PC2*8.75), 
+             label=tissue_PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c( "#86C5D8",  "#620093", "#E7C94C"))
+)
+
+
+```
+
+### Tissue expression PCA labeling
+#Extract components of our plots to select only genes outside the confidence interval to be plotted
+We are going to use genes outside the 90% interval for Aux/IAAs and ARFs, and 68% (default ellipse ggbiplot) for labeling the genes.
+```{r}
+# Extract components so we can select out 
+PC1_2$data
+build <- ggplot_build(PC1_2)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(tissue_pca_expr_data$PC1, 
+                               tissue_pca_expr_data$PC2, 
+                               as.factor(tissue_pca_expr_data$Family), levels=c(0.68, .9))
+# add geom_point with ellipses point 
+
+ell_points$ARF$`0.9`
+ell_ARF <- as.data.frame(ell_points$ARF[[2]])
+
+ell_points$IAA$`0.9`
+ell_IAA <- as.data.frame(ell_points$IAA[[2]])
+
+ell_points$`AFB/TIR1`$`0.68`
+ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`[[1]])
+
+# Find which points are outside (!) the ellipse, and add this to the data
+library(sp)
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(!point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(!point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y))
+)
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(!point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+
+
+# Combining data points for labeling
+#Combine data points coordinates with PCs and expression data containing gene names will help us to have only genes of interest names, or at list the majority of them.
+
+#Plot all genes that are outside the TIR's confidence interval ellipse
+tissue_expr_logical <- cbind(tissue_pca_expr_data, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+
+PC1_2 + ggrepel::geom_text_repel(data = tissue_expr_logical %>% 
+                          #as_tibble(rownames = "name")%>% 
+                          filter(in.ell_TIR), aes(PC1, PC2, label=ortholog_number), size=2, max.overlaps = 20,
+                        min.segment.length = 0, segment.curvature = -0.1) + theme_test()
+
+ggsave("../Stats/tissue_expr_PC1_2_Work_allTranscripts_outside_68_TIRellipse.pdf", width = 12, height = 12)
+```
+
+
+
+
+
+# Make PCA for each family individually for raw dataset
+
+
+## RAW expression
+```{r}
+Expr_data3_FINAL3 <- Expr_data3_FINAL2 %>% column_to_rownames(., var = "heatmap_label")
+
+(RAW_expr_analysis <- pheatmap::pheatmap(mat = Expr_data3_FINAL3[,7:20],  annotation_row = Expr_data3_FINAL3[,c(4,6)], annotation_colors = Class_df1_colors[1],
+                                         scale = "row",
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300, 
+         cutree_rows = 6, 
+         #legend_breaks = -1:4,
+         main = "RAW expression analysis",
+        color = c("white", "mistyrose",  "mistyrose2", "mistyrose3",  "lightpink", "pink", "lightblue", "blue", "turquoise", "lightslateblue")))
+
+save_pheatmap_pdf(RAW_expr_analysis, "FINAL_RAW_expr.pdf", height = 11, width = 7)
+
+
+```
+
+## RAW data PCA
+```{r}
+pca_data <- Expr_data3_FINAL2 %>% dplyr::select(ortholog_number, Family, AM, Cotyledon, Hypocotyl, SAM6D, SAM17D, SAM38D, Leaf ) %>% column_to_rownames(., var = "ortholog_number")
+
+RAW_expr_pca <- prcomp(pca_data[,-c(1)], scale. = T, center = T)
+summary(RAW_expr_pca)
+
+plot(RAW_expr_pca, col="#E5F5F9")
+plot(RAW_expr_pca, type="l", col="#FFC600")
+biplot(RAW_expr_pca, scale = 1)
+
+# We can retrieve this x values for both PC1 and PC2 which are the PCs that accounts for most of the variation in the data and attach them to our expression data to make a better visualization
+RAW_pca_expr_data <- cbind(dplyr::select(.data = Expr_data3_FINAL2, ortholog_number, Family, AM, Cotyledon, Hypocotyl, SAM6D, SAM17D, SAM38D, Leaf ), RAW_expr_pca$x[, 1:3])
+
+Class <- RAW_pca_expr_data$Family
+
+#Plot
+# ggplot(RAW_pca_expr_data, aes(PC1, PC2, col=Class, fill=Class)) + 
+#   stat_ellipse(geom = "polygon", col="black", alpha=.5,)+
+#   geom_point(shape=21, col="black", alpha=.5) + theme_bw() 
+
+# extract the loading so we can change the arrows more easily
+RAW_PCA_loadings <- data.frame(Variables=rownames(RAW_expr_pca$rotation), RAW_expr_pca$rotation)
+
+
+(PC1_2 <- ggbiplot::ggbiplot(RAW_expr_pca, obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE) + 
+    geom_segment(RAW_PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8), yend=(PC2*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(RAW_PCA_loadings$PC1*8.75), #add the tissue names to it manually
+             y=(RAW_PCA_loadings$PC2*8.75), 
+             label=RAW_PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c( "#86C5D8",  "#620093", "#E7C94C")) +
+    ggrepel::geom_text_repel(aes(label=rownames(RAW_pca_expr_data)),
+                           size = 2.5)
+)
+
+
+
+```
+
+
+
+### RAW expression PCA labeling
+#Extract components of our plots to select only genes outside the confidence interval to be plotted
+We are going to use genes outside the 90% interval for Aux/IAAs and ARFs, and 68% (default ellipse ggbiplot) for labeling the genes.
+```{r}
+# Extract components so we can select out 
+PC1_2$data
+build <- ggplot_build(PC1_2)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(RAW_pca_expr_data$PC1, 
+                               RAW_pca_expr_data$PC2, 
+                               as.factor(RAW_pca_expr_data$Family), levels=c(0.68, .9))
+# add geom_point with ellipses point 
+
+ell_points$ARF$`0.9`
+ell_ARF <- as.data.frame(ell_points$ARF[[2]])
+
+ell_points$IAA$`0.9`
+ell_IAA <- as.data.frame(ell_points$IAA[[2]])
+
+ell_points$`AFB/TIR1`$`0.68`
+ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`[[1]])
+
+# Find which points are outside (!) the ellipse, and add this to the data
+library(sp)
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(!point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(!point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y))
+)
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(!point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+
+
+# Combining data points for labeling
+#Combine data points coordinates with PCs and expression data containing gene names will help us to have only genes of interest names, or at list the majority of them.
+
+#Plot all genes that are outside the TIR's confidence interval ellipse
+raw_expr_logical <- cbind(RAW_pca_expr_data, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+
+PC1_2 + ggrepel::geom_text_repel(data = raw_expr_logical %>% 
+                          #as_tibble(rownames = "name")%>% 
+                          filter(in.ell_TIR), aes(PC1, PC2, label=ortholog_number), size=2, max.overlaps = 20,
+                        min.segment.length = 0, segment.curvature = -0.1) + theme_test()
+
+ggsave("../Stats/RAW_expr_PC1_2_Work_allTranscripts_outside_68_TIRellipse.pdf", width = 12, height = 12)
+```
+
+# AFB/TIR1 raw PCA
+
+* January 4th, 2023
+For now I won't be using the ellipse values for labeling. Because we want to compare all labels and that is made easier if we just keep all labels that does not overlap for now.
+```{r}
+# AFB/TIR1
+AFB_RAW_expr_df <- filter(pca_data, Family == "AFB/TIR1") #%>% select(., -Family) 
+AFB_RAW_expr_pca <- prcomp(AFB_RAW_expr_df[,-c(1)], scale. = F)
+
+AFB_RAW_PCA_loadings <- data.frame(Variables=rownames(AFB_RAW_expr_pca$rotation), AFB_RAW_expr_pca$rotation)
+
+
+# retrieve pc's
+AFB_RAW_expr_pca_data <- cbind(dplyr::select(.data = filter(Expr_data3_FINAL2, Family=="AFB/TIR1"), ortholog_number, Family, AM, Cotyledon, Hypocotyl, SAM6D, SAM17D, SAM38D, Leaf ), AFB_RAW_expr_pca$x[, 1:3])
+
+library(ggfortify)
+ggplot2::autoplot(AFB_RAW_expr_pca, loadings.colour = 'gray60',
+         loadings.label.colour='gray60',
+         loadings = TRUE, loadings.label = TRUE,
+         loadings.label.size = 4, loadings.label.repel=T) +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1)) +
+  ggrepel::geom_text_repel(aes(label=rownames(AFB_RAW_expr_pca_data)),
+                           size = 2.5) + # font size in the text labels. Placed outside aes()
+  theme_bw() 
+
+
+ggsave("../Stats/AFB_RAW_expr_PC1_2_Work_NoScale_autoplot.pdf", width = 12, height = 12)
+
+ggplot2::autoplot(AFB_RAW_expr_pca,
+                  x=2, #PC2
+                  y=3, #PC3
+                  loadings.colour = 'gray60',
+         loadings.label.colour='gray60',
+         loadings = TRUE, loadings.label = TRUE,
+         loadings.label.size = 4, loadings.label.repel=T) +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1)) +
+  ggrepel::geom_text_repel(aes(label=rownames(AFB_RAW_expr_pca_data)),
+                           size = 2.5) + # font size in the text labels. Placed outside aes()
+  theme_bw() 
+
+
+ggsave("../Stats/AFB_RAW_expr_PC3_2_Work_NoScale_autoplot_autoplot.pdf", width = 12, height = 12)
+
+
+```
+
+
+# ARFs Raw PCA
+```{r}
+ARF_RAW_expr_df <- filter(pca_data, Family == "ARF") #%>% select(., -Family) 
+ARF_RAW_expr_pca <- prcomp(ARF_RAW_expr_df[,-1], scale. = F)
+
+ARF_RAW_PCA_loadings <- data.frame(Variables=rownames(ARF_RAW_expr_pca$rotation), ARF_RAW_expr_pca$rotation)
+
+
+# retrieve pc's
+ARF_RAW_expr_pca_data <- cbind(dplyr::select(.data = filter(Expr_data3_FINAL2, Family=="ARF"), ortholog_number, Family, AM, Cotyledon, Hypocotyl, SAM6D, SAM17D, SAM38D, Leaf ), ARF_RAW_expr_pca$x[, 1:3])
+
+ggplot2::autoplot(ARF_RAW_expr_pca, loadings.colour = 'gray60',
+         loadings.label.colour='gray60',
+         loadings = TRUE, loadings.label = TRUE,
+         loadings.label.size = 4, loadings.label.repel=T) +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1)) +
+  ggrepel::geom_text_repel(aes(label=rownames(ARF_RAW_expr_pca_data)),
+                           size = 2) + # font size in the text labels. Placed outside aes()
+  theme_bw() 
+
+
+ggsave("../Stats/ARF_RAW_expr_PC1_2_Work_NoScale_autoplot.pdf", width = 12, height = 12)
+
+ggplot2::autoplot(ARF_RAW_expr_pca, 
+                  x = 2, # PC2
+                  y = 3, # PC3
+                  loadings.colour = 'gray60',
+         loadings.label.colour='gray60',
+         loadings = TRUE, loadings.label = TRUE,
+         loadings.label.size = 4, loadings.label.repel=T) +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1)) +
+  ggrepel::geom_text_repel(aes(label=rownames(ARF_RAW_expr_pca_data)),
+                           size = 2, max.overlaps= 20) + # font size in the text labels. Placed outside aes()
+  theme_bw() 
+
+
+ggsave("../Stats/ARF_RAW_expr_PC3_2_Work_NoScale_autoplot.pdf", width = 12, height = 12)
+
+
+```
+
+
+# IAAs Raw PCA
+```{r}
+IAA_RAW_expr_df <- filter(pca_data, Family == "IAA") #%>% select(., -Family) 
+IAA_RAW_expr_pca <- prcomp(IAA_RAW_expr_df[,-1], scale. = F)
+
+IAA_RAW_PCA_loadings <- data.frame(Variables=rownames(IAA_RAW_expr_pca$rotation), IAA_RAW_expr_pca$rotation)
+
+
+# retrieve pc's
+IAA_RAW_expr_pca_data <- cbind(dplyr::select(.data = filter(Expr_data3_FINAL2, Family=="IAA"), ortholog_number, Family, AM, Cotyledon, Hypocotyl, SAM6D, SAM17D, SAM38D, Leaf ), IAA_RAW_expr_pca$x[, 1:3])
+
+ggplot2::autoplot(IAA_RAW_expr_pca, loadings.colour = 'gray60',
+         loadings.label.colour='gray60',
+         loadings = TRUE, loadings.label = TRUE,
+         loadings.label.size = 4, loadings.label.repel=T) +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1)) +
+  ggrepel::geom_text_repel(aes(label=rownames(IAA_RAW_expr_pca_data)),
+                           size = 2) + # font size in the text labels. Placed outside aes()
+  theme_bw() 
+
+
+ggsave("../Stats/IAA_RAW_expr_PC1_2_Work_NoScale_autoplot.pdf", width = 12, height = 12)
+
+ggplot2::autoplot(IAA_RAW_expr_pca, 
+                  x = 2, # PC2
+                  y = 3, # PC3
+                  loadings.colour = 'gray60',
+         loadings.label.colour='gray60',
+         loadings = TRUE, loadings.label = TRUE,
+         loadings.label.size = 4, loadings.label.repel=T) +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1)) +
+  ggrepel::geom_text_repel(aes(label=rownames(IAA_RAW_expr_pca_data)),
+                           size = 2, max.overlaps= 20) + # font size in the text labels. Placed outside aes()
+  theme_bw() 
+
+
+ggsave("../Stats/IAA_RAW_expr_PC3_2_Work_NoScale_autoplot.pdf", width = 12, height = 12)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+# 2022 Expression CODE (old heatmap version)
+
+#Notes:
+ *combined_expression_long was manually checked and annotated. And is now ready to submit as supplement table. File name is "combined_expression_EDITED_final.xls"
+I have annotated the gene IDs so they would all be unique. That means that their .1, .2, and so on may not be accurate, but their transcripts are and can be checked easily with the table. Which will give us the transcripts that are most expressed and can be used in downstream analysis.
+```{r}
+# Build matrix for heatmap test
+Expression_data$names <- str_c(Expression_data$name, sep = "/At", Expression_data$Sub_Family) # Concatenate sub_family to make genes identification easier.
+
+expression_test <-  Expression_data %>% drop_na() %>%  .[,-c(1:4)] %>% column_to_rownames( "names") #for heatmap
+
+# Build heat map
+is.na(expression_test)
+#heatmaply::heatmaply(drop_na(expression_test))
+
+# We also need to assign groups such as AtAFB2 so we can identify the transcripts for it.
+```
+
+# Expression analysis according to unique gene IDs.
+```{r building heatmap}
+# join both documents so we can have some classified genes in our expression analysis. Annotation was made according to phylogenies
+Class_df<- Expression_data %>% dplyr::select(names, Class, Family) %>% drop_na()
+
+Class_df1 <- column_to_rownames(Class_df, var = "names")
+
+
+# Build heatmap that has both gene expression and class
+# library(dendextend)
+Expression_data1 <- log10(expression_test)
+
+  #ifelse(expression1 > 0, log10(expression1), expression1) 
+# - Inf is not accepted which so we can transform it to 0 to be able to plot 
+# also -Inf is the result of log of 0 which makes it okay to transform back to its 0 (original) value.
+Expression_data1[Expression_data1 == -Inf] <- 0 
+
+```
+
+This heat map will be a supplemental material.
+```{r building heatmap}
+pheatmap::pheatmap(mat = Expression_data1,  annotation_row = Class_df1, 
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cutree_cols = 4,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         main = "Expression analysis")  # the whole expression is to much for the heat map. I will break it down by get family
+
+# Specify colors
+Class_df1_colors = list(Family = c(ARF = "Purple", IAA = "yellow", `AFB/TIR1`="lightblue"), Class = c(A="purple", B="lightseagreen", C="orange", TIR1="green", `AFB2/3`="blue", `AFB4/5`="yellow", COI1="pink", AFB6="pink2", `COI1-A`="pink1", `COI1-A`="pink3"))
+
+(expr_soy <- pheatmap::pheatmap(mat = Expression_data1,  annotation_row = Class_df1, annotation_colors = Class_df1_colors[1],
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300,
+         main = "Expression analysis"))#,
+       #  color = c("mistyrose", "mistyrose2", "lightpink", "white","lightblue", "turquoise", "lightslateblue")))
+
+save_pheatmap_pdf(expr_soy, "expr_soy_final4.pdf", height = 11, width = 7)
+
+
+(expr_soy2 <- pheatmap::pheatmap(mat = Expression_data1,  annotation_row = Class_df1, annotation_colors = Class_df1_colors[1],
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300,
+         main = "Expression analysis",
+        color = c("mistyrose", "mistyrose2", "lightpink", "white","lightblue", "turquoise", "lightslateblue")))
+
+save_pheatmap_pdf(expr_soy2, "expr_soy_final5.pdf", height = 11, width = 7)
+
+
+# Add clades to Heatmap
+
+```
+We also want to plot only the highly expressed genes to go in the body of our manuscript.
+```{r}
+annotation_row = data.frame(Clades = factor(rep(c("Clade1", "Clade2", "Clade3", "Clade4", "Clade5"), c(10, 4, 6, 2, 1)))) 
+
+(expr_analysis <- pheatmap::pheatmap(mat = Expression_data1,  annotation_row = Class_df1, annotation_colors = Class_df1_colors[1],
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300, 
+         cutree_rows = 7, 
+         main = "Expression analysis",
+        color = c("mistyrose", "mistyrose2", "lightpink", "white","lightblue", "turquoise", "lightslateblue")))
+
+save_pheatmap_pdf(expr_analysis, "expr_7clusters.pdf", height = 11, width = 7)
+```
+
+
+```{r}
+#Add clades to heatmap - will do it manually using pdf editor.
+
+#make a dataframe with gene names ordered as in heatmap heatmap order(top-to-bottom). 
+names_to_reorder <- as.data.frame(rownames(expression_test[expr_analysis$tree_row[["order"]],])) 
+class(names_to_reorder)
+
+#Re-order names in expression matrix from line 83
+expression_reorder <-  Expression_data %>% drop_na() %>%  .[,-c(1:4)] 
+expression_reordered <- expression_reorder[
+  order(match(expression_reorder$names,
+              names_to_reorder$`rownames(expression_test[expr_analysis$tree_row[["order"]], ])`)), ]
+
+# Save so we can work on Statistical analysis in a new markdown script.
+write_csv(expression_reordered, "../Stats/expression_reordered.csv")
+
+high_expressed_2cluster <- expression_reordered[146:221, ]
+write_csv(high_expressed_2cluster, "../Stats/high_expressed_2cluster.csv")
+
+expression_reordered <- expression_reordered %>% column_to_rownames( "names") # now that my matrix has the exact same order as the heatmap we can select the most expressed clades and plot them individually
+
+expr_reordered_log10 <- log10(expression_reordered)
+# - Inf is not accepted which so we can transform it to 0 to be able to plot 
+expr_reordered_log10[expr_reordered_log10 == -Inf] <- 0 
+
+# Save so we can work on Statistical analysis in a new markdown script.
+write_csv(expr_reordered_log10, "../Stats/expr_reordered_log10.csv")
+
+high_expr_clusters <- expr_reordered_log10[146:221,] # select highly expressed bottom clusters
+write_csv(high_expr_clusters, "../Stats/high_expr_clusters_log10.csv")
+
+# Build heatmap that has both gene expression and class
+(high_expr <- pheatmap::pheatmap(mat = high_expr_clusters,  annotation_row = Class_df1, annotation_colors = Class_df1_colors[1],
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300, 
+         cutree_rows = 2, 
+         main = "Expression analysis",
+        color = c("mistyrose", "mistyrose2", "white","lightblue", "turquoise", "lightslateblue")))
+
+# save_pheatmap_pdf(high_expr, "high_expr_clusters.pdf", height = 11, width = 7)
+```
+By selecting the bottom clusters and re-making the heatmap with them, there are some changes which for publication I believe would be better to just trim the bottom cluster in inskcape so we keep consitency without much effort.
+

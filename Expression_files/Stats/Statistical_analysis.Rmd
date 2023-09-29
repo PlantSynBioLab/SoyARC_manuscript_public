@@ -1,0 +1,461 @@
+---
+title: "Statistical analysis for expression data"
+author: "Deisiany"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(factoextra)
+library(ggrepel)
+```
+
+# Load expression analysis data
+```{r}
+expr_data <- read_csv("expression_reordered.csv")
+head(expr_data)
+
+expr_2high_clusters <- read_csv("high_expressed_2cluster.csv")
+head(expr_2high_clusters)
+```
+# Build table with orthology, Gene ID, Class and transcript ID
+```{r}
+# First lets get all the trees tip labels
+IAA_tree <- treeio::read.mrbayes("../../final_trees/IAA_input/mb_results_mult_final/IAAmult_final5.nex.con.tre")
+
+IAA_tips <- as.data.frame(IAA_tree@phylo$tip.label) %>% 
+  rename_with(.cols = 1, ~ "TipLabel") %>% filter(!grepl('Medtr|Glyso|Lj|AT', .$TipLabel))
+
+
+ARF_tree <- treeio::read.mrbayes("../../final_trees/ARF_input/mb_results_mult/ARFmult_final.nex.con.tre")
+
+ARF_tips <- as.data.frame(ARF_tree@phylo$tip.label) %>% 
+  rename_with(.cols = 1, ~ "TipLabel") %>% filter(!grepl('Medtr|Glyso|Lj|AT', .$TipLabel))
+
+AFB_tree <- treeio::read.mrbayes("../../final_trees/AFB_input/mb_results_mult/AFBmult_final.nex.con.tre")
+
+AFB_tips <- as.data.frame(AFB_tree@phylo$tip.label) %>% 
+  rename_with(.cols = 1, ~ "TipLabel") %>% filter(!grepl('Medtr|Glyso|Lj|AT', .$TipLabel))
+
+
+tree_tips <- rbind(AFB_tips, ARF_tips, IAA_tips)
+
+# Read table with all classified Glyma
+combined_expression <- readxl::read_xls("../Script/combined_expression_EDITED_final.xls") %>% drop_na()
+#combined_expression <- drop_na(combined_expression)
+
+combined_expression
+
+# I don't think I need the Tip labels because the expression dataframe already have them and them plus other transcripts that are not plotted in the tree.
+
+# So we only need to make the name as unique, but we want to add (a, b, c, d ... and so on) to distinguish those. 
+combined_expression <- combined_expression %>% group_by(Sub_Family) %>% mutate(ortholog_name = row_number()) %>% mutate(ortholog_name = paste0("Gm", Sub_Family, "_", LETTERS[ortholog_name])) 
+combined_expression[, c(1:6)] %>% group_by(Sub_Family) %>% 
+  mutate(ortholog_name = row_number()) %>% 
+  mutate(ortholog_name = paste0("Gm", Sub_Family, "_", LETTERS[ortholog_name]))
+
+
+unique_Label <- combined_expression[, c(1,6)] %>% 
+  unique() %>% group_by(Sub_Family) %>% 
+  mutate(ortholog_name = dplyr::row_number())  %>% 
+  mutate(ortholog_name = paste0("Gm", Sub_Family, "_", LETTERS[ortholog_name]))
+
+# write_csv(unique_Label, "Ortholog_unique.csv")
+
+combined_expression2 <- left_join(combined_expression, unique_Label)
+
+#write_csv(combined_expression, "Ortholog_df_combined_expr.csv")
+
+Ortholog_df <- combined_expression[, c(1,4,5,69)] %>% 
+  rename(., Transcript_id =name, Class=Family)
+
+#write_csv(Ortholog_df, "Ortholog_df.csv")
+```
+
+
+```{r}
+# Remove everything after /
+expr_data <-  expr_data %>% mutate(Transcript_id = names)
+expr_data$Transcript_id <- expr_data$Transcript_id %>% str_remove(., "/.*")
+
+#Join df with ortholog names with the expr_data df
+expr_data2 <- left_join(expr_data, Ortholog_df)
+
+
+# make a new column so we have the repeatable names for the genes and therefore cluster which ARFs, AFBs and IAAs have greater impact for tissues of interest.
+data_expr_4pca <- expr_data2 %>% 
+  mutate(Family = str_extract(expr_data2$names, "At.*" )) %>% 
+  mutate(Class = str_extract(expr_data2$names,  "At.*" ))
+
+# Also want to create a class column to try to plot circles that represents each family and their contributions to PCA
+data_expr_4pca$Class <- data_expr_4pca$Class %>% sub("At", "", .)  %>% 
+  sub("[0-9].*", "", .) %>% sub("AFB|TIR", "TIR1/AFB", .)
+
+#Remove COI
+ALLdata_expr_4pca <-data_expr_4pca[!grepl("COI", data_expr_4pca$Class),]
+
+ALLdata_expr_4pca$Family <- sub("At", "Gm", ALLdata_expr_4pca$Family)
+head(ALLdata_expr_4pca)
+
+
+# Do the same For the two highly expression clusters
+expr_4pca <- expr_2high_clusters %>% mutate(Family = str_extract(expr_2high_clusters$names,  "At.*" )) %>% mutate(Transcript_id = names)
+
+expr_4pca$Transcript_id <- expr_4pca$Transcript_id %>% str_remove(., "/.*")
+
+expr_4pca$Family <- sub("At", "Gm", expr_4pca$Family)
+head(expr_4pca)
+
+# I want to also join the ortholog column created. So let's match that by joining by Transcript_id
+expr_4pca2 <- left_join(Ortholog_df, expr_4pca) %>% drop_na()
+```
+
+```{r}
+expr_2high_clusters2 <- expr_2high_clusters[,c(1,6:10, 12,15)]
+
+library(tidyr)
+expr_2high_clusters_long <- gather(expr_2high_clusters2, Tissues, TPM, AM:Leaf, factor_key = TRUE)
+head(expr_2high_clusters_long)
+
+expr_2high_clusters_wide <- spread(expr_2high_clusters_long, names, TPM)
+expr_2high_clusters_wide
+
+
+```
+
+# PCA: Principal component analysis
+
+Maybe a general PCA would be handy for defining what Genes are more interesting to our rapid canopy cover trait.
+
+```{r}
+# maybe select only AFBs
+# AFB_expr <- data_expr_4pca[grep(c("GmAFB|GmTIR"), data_expr_4pca$Family),]
+
+pca_data <- ALLdata_expr_4pca[, c(1,6:10, 12, 19)] %>% column_to_rownames(., "ortholog_name")
+
+expr_pca <- prcomp(pca_data, scale = TRUE)
+summary(expr_pca)
+
+plot(expr_pca, col="#E5F5F9")
+plot(expr_pca, type="l", col="#FFC600")
+biplot(expr_pca, scale = 1)
+
+# Extract scores
+head(str(expr_pca))
+
+head(expr_pca$x) #or the principal component scores for each observation.
+
+# We can retrieve this x values for both PC1 and PC2 which are the PCs that accounts for most of the variation in the data and attach them to our expression data to make a better visualization
+expr_data2 <- cbind(ALLdata_expr_4pca[, c(1,6:10, 12,15, 16,17,19,18)], expr_pca$x[, 1:3])
+head(expr_data2)
+
+Class <- data_expr_4pca$Class
+
+```
+
+# PC1 and PC2 plot
+As we can see the plot below has three clusters. The overlaping in the clusters (ellipse with 68% interval) shows that all the three auxin gene families are highly expressed in in all the tissues that we are looking at. The genes seen outside the ellipses and therefore outliers may be important in regulating tissues independently, and may be more interesting to look at.
+```{r}
+
+ggplot(expr_data2, aes(PC1, PC2, col=Class, fill=Class)) + 
+  stat_ellipse(geom = "polygon", col="black", alpha=.5,)+
+  geom_point(shape=21, col="black", alpha=.5) + theme_bw() 
+
+```
+Same plot but using our variables. The default probability for ellipse drawn below is 0.68.
+```{r}
+# extract the loading so we can change the arrows more easily
+PCA_loadings <- data.frame(Variables=rownames(expr_pca$rotation), expr_pca$rotation)
+
+
+(PC1_2 <- ggbiplot::ggbiplot(expr_pca, obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE) + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8), yend=(PC2*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC1*8.75), #add the tissue names to it manually
+             y=(PCA_loadings$PC2*8.75), 
+             label=PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c("#620093", "#E7C94C", "#86C5D8"))
+ )
+
+
+
+```
+Our genes have a lot of overlap in expression, which is expected since auxin regulates many aspects of plant growth and development. The genes that are cluster together towards the center of our ellipse are not as suitable for changes, since changes in one may lead to crucial phenotipic defects. On the other hand, if we target genes that are outside of the 68 % probability interval, they may regulate gene expression in a more tissue dependent manner, and maybe targeting them would be the key to select genes that are more primarily related with hypocotyl elongation, meristems, leafs and so on. 
+
+#Extract components of our plots to select only genes outside the confidence interval to be plotted
+We are going to use genes outside the 90% interval for Aux/IAAs and ARFs, and 68% (default ellipse ggbiplot) for labeling the genes.
+```{r}
+# Extract components so we can select out 
+PC1_2$data
+build <- ggplot_build(PC1_2)$data
+points <- build[[1]]
+
+# co-ordinates of the ellipses
+ell_points <- car::dataEllipse(expr_data2$PC1, expr_data2$PC2, as.factor(expr_data2$Class), levels=c(0.68, .9))
+# add geom_point with ellipses point 
+
+ell_points$ARF$`0.9`
+ell_ARF <- as.data.frame(ell_points$ARF[[2]])
+
+ell_points$IAA$`0.9`
+ell_IAA <- as.data.frame(ell_points$IAA[[2]])
+
+ell_points$`TIR1/AFB`$`0.68`
+ell_TIR <- as.data.frame(ell_points$`TIR1/AFB`[[1]])
+
+# Find which points are outside (!) the ellipse, and add this to the data
+library(sp)
+dat_TIR <- data.frame(
+  points[2:3], 
+  in.ell_TIR = as.logical(!point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+)
+
+dat_IAA <- data.frame(
+  points[2:3], 
+  in.ell_IAA = as.logical(!point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y))
+)
+
+dat_ARF <- data.frame(
+  points[2:3], 
+  in.ell_ARF = as.logical(!point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+)
+
+
+```
+
+# Plot the differences that we get in genes outside the ellipses for each gene family
+```{r}
+# Plot the result
+ggplot(dat_ARF, aes(x, y)) +
+  geom_point(aes(col = in.ell_ARF)) + geom_point(data = ell_ARF)
+
+
+```
+
+```{r}
+#TIR1/AFBs
+ggplot(dat_TIR, aes(x, y)) +
+  geom_point(aes(col = in.ell_TIR)) + geom_point(data = ell_TIR)
+```
+
+```{r}
+ggplot(dat_IAA, aes(x, y)) +
+  geom_point(aes(col = in.ell_IAA)) + geom_point(data=ell_IAA)
+```
+
+# Combining data points for labeling
+Combine data points coordinates with PCs and expression data containing gene names will help us to have only genes of interest names, or at list the majority of them.
+
+Plot all genes that are outside the ARF's confidence interval ellipse
+```{r}
+expr_logical <- cbind(expr_data2, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y, Transcript_id, ensembl_gene_id, names))
+
+
+expr_logical[,c(9, 13:15)] %>% filter(in.ell_ARF)
+
+# # Change arrows color again
+# PC1_2$layers[[1]]$aes_params$colour <- 'gray'
+# 
+# #Change variables/tissue names
+# PC1_2$layers[[4]]$aes_params$colour[[1]] <- 'gray'
+
+PC1_2 + ggrepel::geom_text_repel(data = expr_logical %>% 
+                          #as_tibble(rownames = "name")%>% 
+                          filter(in.ell_TIR), aes(PC1, PC2, label=ortholog_name), size=2, max.overlaps = 20,
+                        min.segment.length = 0, segment.curvature = -0.1) + theme_test()
+
+
+ggsave("Figure_PC1_2_Work_allTranscripts_outside_68_TIRellipse.pdf", width = 12, height = 12)
+
+```
+
+# Remove IAA genes inside the 68% interval for IAA ellipse.
+Plot all genes that are outside of the 68% interval for each of their own ellipses.
+
+PC1_2 + geom_text(data = subset(expr_data_coord2, in.ell == TRUE), 
+                  aes(PC1, PC2, label=rownames(expr_data_coord2)))
+
+
+
+# Troubleshooting to get the outlier genes!
+
+```{r}
+expr_logical
+
+expr_logical2 <- expr_logical %>% mutate(., in_ell = case_when(Class=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+                                              Class=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
+                                              Class=="TIR1/AFB" & `in.ell_TIR` == TRUE ~ "TRUE"))
+
+expr_logical2[which(expr_logical2$in_ell == TRUE),]
+
+
+expr_logical2[c("in_ell")][is.na(expr_logical2[c("in_ell")])] <- FALSE
+
+# Color equally to their class
+PC1_2 + ggrepel::geom_text_repel(data = expr_logical2 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell)), 
+                          aes(PC1, PC2, label=ortholog_name, color=Class), 
+                        size=3, max.overlaps = Inf,  min.segment.length = 0, 
+                        segment.curvature = -0.1) 
+
+ggsave("plot_PC1_2_gray_WORK.pdf", width = 14, height = 14)
+
+# Gene Color equals to black
+PC1_2 + ggrepel::geom_text_repel(data = expr_logical2 %>% 
+                         # as_tibble(rownames = "name") %>% #We will use ortholog names instead.
+                          filter(as.logical(in_ell)), 
+                          aes(PC1, PC2, label=ortholog_name), 
+                        size=3, max.overlaps = Inf,  min.segment.length = 0, 
+                        segment.curvature = -0.1, 
+                        segment.linetype=5, alpha=.55, hjust=0, direction = "y", segment.size=.25) + 
+    geom_point(aes(color=Class), size=2.5, alpha=.75) + 
+  guides(color = guide_legend(title = "Family"))
+
+ggsave("plot_PC1_2_genes_black_work.pdf", width = 14, height = 14)
+ggsave("plot_PC1_2_genes_black_small.pdf", width = 5, height = 5)
+
+```
+
+
+Each data point in our PCA dataset is plotted here in its coordinates from Principal component 1 and 2. This two linear combination of all the variables retrieved in by the PCA analysis accounts for most of the variability in our data. The ellipse drawn represents a 95% interval for each Class which helps us seeing the variability for each class and also demarcate where the majority of gene expression are.
+Genes that are clustered inside this ellipses are likely to be great candidates for rapid canopy cover development since there expression in its majority are positively correlated among tissues. Highly correlated gene expression cluster together!
+
+# PC1 and PC3 plot
+For this plot we want to keep the same gene IDs names plotted for PC1 and PC2, 
+
+```{r}
+# Plot for publication
+
+(PC2_3 <- ggbiplot::ggbiplot(expr_pca, obs.scale = 1, var.scale = 1, 
+                             varname.adjust = 2.5,
+                            groups = Class, var.axes = F, varname.size = 2.5, 
+                  ellipse = TRUE, alpha = .75,  circle = FALSE, choices = c(2,3)) + 
+    geom_point(aes(color=Class), size=2.5, alpha=.75)+
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*7), yend=(PC3*7)),
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC2*8), #add the tissue names to it manually
+             y=(PCA_loadings$PC3*8), 
+             label=PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c("#620093", "#E7C94C", "#86C5D8")))
+ 
+
+# Gene Color equals to black
+PC2_3 + ggrepel::geom_text_repel(data = expr_logical2 %>% 
+                          #as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell)), 
+                          aes(PC2, PC3, label=ortholog_name),
+                          size=3, max.overlaps = Inf,  
+                          min.segment.length = 0, 
+                        segment.curvature = -0.1, 
+                        segment.linetype=5, alpha=.55, hjust=1, direction = "y", segment.size=.25) + guides(color = guide_legend(title = "Family"))
+
+
+ggsave("plot_PC2_3_genes_black_work.pdf", width = 20, height = 20)  
+ggsave("plot_PC2_3_genes_black_small.pdf", width = 5, height = 5)
+
+```
+Also use in.ell_ARF  for the working figure for PC2_3 so we can see what genes more important in those tissues that separates better on them
+```{r}
+PC2_3 + ggrepel::geom_text_repel(data = expr_logical2 %>% 
+                          #as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in.ell_ARF)), 
+                          aes(PC2, PC3, label=ortholog_name),
+                          size=3, max.overlaps = Inf,  
+                          min.segment.length = 0, 
+                        segment.curvature = -0.1, 
+                        segment.linetype=5, alpha=.55, hjust=1, direction = "y", segment.size=.25) + guides(color = guide_legend(title = "Family"))
+
+
+ggsave("plot_PC2_3_genes_black_work_ARFellipse.pdf", width = 20, height = 20) 
+```
+
+
+# PC2 and PC3 plot
+Give us a better separation between Meristematic tissues genes from leaf and cotyledon genes. 
+
+
+# Stereogram plot with PC1,2 and 3 as an option
+The code chunk below was used from https://jmonlong.github.io/Hippocamplus/2019/11/19/stereograms-1kgp-pca-tsne/. 
+```{r}
+## add some white space around the points
+extra.margin = .2
+pc1.r = range(expr_data2$PC1)
+pc1.r = pc1.r + c(-1,1)*extra.margin*diff(pc1.r)
+pc2.r = range(expr_data2$PC2)
+pc2.r = pc2.r + c(-1,1)*extra.margin*diff(pc2.r)
+
+
+## Plot
+library(ggforce)
+ ggplot(expr_data2, aes(x=PC1, y=PC2, depth=PC3, color=Class, fill=Class)) + 
+  geom_point(alpha=.7) + theme_bw()  +
+  scale_color_manual(values=c("#620093", "yellow", "#86C5D8")) +
+  guides(colour=guide_legend(override.aes=list(alpha=1))) + 
+  facet_stereo(IPD=-63.5) + theme(legend.position='bottom') + stat_ellipse( level = .95 ) +
+  #geom_polygon(stat = "ellipse", aes(fill = Class), alpha = 0, show.legend = FALSE)+
+  xlim(pc1.r) + ylim(pc2.r) 
+
+
+# fit <- princomp(expr_data2[,-c(8,9)], cor=TRUE)
+# p <- factoextra::fviz_pca_biplot(fit)
+# ggplotly(p)
+
+
+```
+
+# 3D plot with PC1,2 and 3
+
+```{r}
+fig <- plotly::plot_ly(expr_data2, x = ~PC1, y = ~PC2, z = ~PC3, color = ~expr_data2$Class, colors = c("#620093", "yellow", "#86C5D8")) # + geom_point(size=2) 
+
+fig
+
+fig <- fig %>%
+  layout(
+    #title = "Principal component analysis",
+    scene = list(bgcolor = "#e5ecf6")
+)
+
+fig
+
+
+```
+
+
+#Let's look at the correlation between variables and PCs.
+```{r}
+core <- cor(data_expr_4pca[, c(1,6:10, 12)], expr_data2[,10:12])
+core
+```
+Plot
+```{r}
+library("corrplot")
+corrplot(core, is.corr=FALSE)
+```
+Explain correlation in terms of gene expression for each tissue.
+
+```{r}
+PCA_df<-data.frame(expr_pca$x, Class=data_expr_4pca$Class)
+
+ggplot(PCA_df, aes(x=PC1, y=PC2, col=Class))+
+   geom_point(size=4,alpha=0.35)+ 
+   scale_color_manual(values = c("#620093", "yellow", "#86C5D8")) + 
+   theme_classic() + scale_x_log10()
+```
+
+
+
+
+

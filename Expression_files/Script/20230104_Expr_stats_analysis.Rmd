@@ -1,0 +1,356 @@
+---
+title: "Statistical Analysis of Expression data"
+author: "Deisiany"
+date: "2023-01-04"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(heatmaply)
+library(tidyverse) # wrangling data
+#library(readr)
+library(magrittr) #for lots of pipes
+#library(dplyr)
+#library(biomaRt)
+#library(ggbeeswarm)
+#library(stringr)
+library(ggplot2)
+#library(ggrepel)
+#library(forcats)
+library(pheatmap)
+library(devtools)
+#install_github("vqv/ggbiplot")
+library(ggbiplot) # For plotting PCA
+```
+
+
+
+```{r Save pheatmap function}
+# Source:
+# https://stackoverflow.com/questions/43051525/how-to-draw-pheatmap-plot-to-screen-and-also-save-to-file
+save_pheatmap_pdf <- function(x, filename, width=7, height=4) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   pdf(filename, width=width, height=height)
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+
+
+
+# https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+  
+save_pheatmap_png <- function(x, filename, width=1200, height=1000, res = 150) {
+  png(filename, width = width, height = height, res = res)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+ 
+
+
+```
+
+* January 1, 2023
+
+Read dataframe manually checked back in to get started with normalization.
+Here we also want to drop gene IDs that has NA in expression.
+```{r}
+Expr_data3_FINAL <- read_csv("Expr_data3_FINAL_edited.csv")
+
+Expr_data3_FINAL <- Expr_data3_FINAL %>% drop_na() %>%  dplyr::select(., -Class)
+
+# Unite Tair_locus with ortholog_name columns
+Expr_data3_FINAL2 <- Expr_data3_FINAL %>% dplyr::relocate(ortholog_name, .before = tair_locus) %>% 
+  unite("heatmap_label", ortholog_name:tair_locus, sep = "/", remove = FALSE) %>% 
+  mutate(ortholog_number = str_extract(tair_locus, "\\.[0-9]*$")) %>% 
+  dplyr::relocate(ortholog_number, .after = ortholog_name ) %>% 
+  unite("ortholog_number", ortholog_name:ortholog_number, sep = "") %>% column_to_rownames(., var = "heatmap_label") %>% drop_na()
+
+# write_csv(Expr_data3_FINAL2, "../Stats/FINAL_manuscript_gene_INFO.csv")
+
+```
+
+# Check number of genes "highly" expressed in tissues of interest for each gene family
+
+```{r}
+AFB_number <- Expr_data3_FINAL2 %>% dplyr::select(., Family:Nodule) %>% filter(., Family == "AFB/TIR1") 
+
+meanAFB <- as.data.frame(rowMeans(AFB_number[, -1]))
+subsetAFB <- count(meanAFB > 10) # in average 10 auxin regulatory genes are highly expressed in the tissues
+
+# ARF 
+ARF_number <- Expr_data3_FINAL2 %>% dplyr::select(., Family:Nodule) %>% filter(., Family == "ARF") 
+
+meanARF <- as.data.frame(rowMeans(ARF_number[, -1]))
+subsetARF <- count(meanARF > 10) # in average 35 auxin regulatory genes are highly expressed in the tissues
+
+
+# IAA 
+IAA_number <- Expr_data3_FINAL2 %>% dplyr::select(., Family:Nodule)  %>% filter(., Family == "IAA") 
+
+meanIAA <- as.data.frame(rowMeans(IAA_number[, -1]))
+subsetIAA <- count(meanIAA > 10) # in average 35 auxin regulatory genes are highly expressed in the tissues
+
+```
+
+# Log transform data and then normalize
+```{r}
+Expr_data_log <- log2(Expr_data3_FINAL2[,c(7:20)])
+
+# Specify colors
+Class_df1_colors = list(Family = c(ARF = "Purple", IAA = "yellow", `AFB/TIR1`="lightblue"), Class = c(A="purple", B="lightseagreen", C="orange", TIR1="green", `AFB2/3`="blue", `AFB4/5`="yellow", COI1="pink", AFB6="pink2", `COI1-A`="pink1", `COI1-A`="pink3"))
+
+# - Inf is not accepted which so we can transform it to 0 to be able to plot 
+# also -Inf is the result of log of 0 which makes it okay to transform back to its 0 (original) value.
+Expr_data_log[Expr_data_log == -Inf] <- 0 
+
+log_expr <- pheatmap::pheatmap(mat = Expr_data_log[ ,c(1:14)],   
+                   annotation_row = Expr_data3_FINAL2[,c(4,6)], 
+                   annotation_colors = Class_df1_colors[1],
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300, 
+         cutree_rows = 6, 
+         #legend_breaks = -1:4,
+         main = "log scaled from raw (TPM) expression analysis",
+         color = c( "mistyrose",  "mistyrose2",  "lightpink","white", "lightblue", "turquoise", "lightslateblue"))
+
+# save_pheatmap_pdf(log_expr, "figures/20230105_log_expr.pdf", height = 11, width = 7)
+```
+
+## Now let's normalize the log expression by TRANSCRIPT
+```{r}
+Expr_data_Norm <- Expr_data_log
+
+for (j in 1:nrow(Expr_data_Norm)) {
+for (i in 1:ncol(Expr_data_Norm)) { 
+  Expr_data_Norm[j,i]<- 
+    (Expr_data_Norm[j,i]-rowMeans(Expr_data_Norm[j,1:ncol(Expr_data_Norm)]))/
+    sd(Expr_data_Norm[j,1:ncol(Expr_data_Norm)]) 
+}
+}
+
+Expr_data_Norm <-Expr_data_Norm %>% drop_na()
+
+
+# plot heatmap
+log_norm_expr <- pheatmap::pheatmap(mat = Expr_data_Norm,   
+                   annotation_row = Expr_data3_FINAL2[,c(4,6)], 
+                   annotation_colors = Class_df1_colors[1],
+         fontsize = 5, 
+         fontsize_row = 3,
+         cellwidth = 5,
+         cellheight = 3, 
+         clustering_distance_rows = "euclidean",
+         treeheight_row = 300, 
+         cutree_rows = 6, 
+         #legend_breaks = -1:4,
+         main = "log scaled from raw (TPM) expression analysis",
+         color = c( "mistyrose",  "mistyrose2",  "lightpink","white", "lightblue", "turquoise", "lightslateblue"))
+
+# save_pheatmap_pdf(log_norm_expr, "figures/20230105_log_norm_expr.pdf", height = 11, width = 7)
+```
+
+
+# Principal Component Analysis
+The principal component analysis already normalizes our data when we use the argument scale. Thus, for the PCA we will use the "raw/TPM" dataframe.
+
+```{r}
+# Raw data
+pca_data <- Expr_data3_FINAL %>% 
+  dplyr::relocate(ortholog_name, .before = tair_locus) %>% 
+  unite("heatmap_label", ortholog_name:tair_locus, sep = "/", remove = FALSE) %>% 
+  mutate(ortholog_number = str_extract(tair_locus, "\\.[0-9]*$")) %>% 
+  dplyr::relocate(ortholog_number, .after = ortholog_name ) %>% 
+  unite("ortholog_number", ortholog_name:ortholog_number, sep = "")%>% drop_na() %>% column_to_rownames(., var = "ortholog_number") %>% dplyr::select(., -c(tair_locus, ensembl_gene_id, heatmap_label, name, class, OF, IAM, IBM, RootTip, Callus, Root, Nodule))
+
+scaled_pca <- prcomp(pca_data[, 2:8], scale. = T)
+summary(scaled_pca) # Sd, variance proportion and cumulative proportion
+
+plot(scaled_pca, col="#E5F5F9")
+
+plot(scaled_pca, type="l", col="#FFC600")
+
+# If we want to look into the difference between scaled and not scaled PCA
+# Scaling is the best way to work with our raw/TPM data. Scaling makes data analysis more reproducible. I wanted to give here and example on how not scaling would look like.
+Not_scaled_pca <- prcomp(pca_data[, 3:9], scale. = F)
+summary(Not_scaled_pca) # Sd, variance proportion and cumulative proportion
+
+plot(Not_scaled_pca, col="#E5F5F9")
+plot(Not_scaled_pca, type="l", col="#FFC600")
+
+
+# Using the heatmap normalized and log transformed data
+# As we can see the differences are made much smaller if we use the log and normalized data as the entry feeeding the PCA, so I believe it is better to use the same data used to build heatmap, since the PCA already contains a normalization argument (scale) built in.
+norm_heatmap_PCA <- prcomp(Expr_data_Norm[, c(1, 6:10, 12)], scale. = F)
+summary(norm_heatmap_PCA) # Sd, variance proportion and cumulative proportion
+
+plot(norm_heatmap_PCA, col="#E5F5F9")
+plot(norm_heatmap_PCA, type="l", col="#FFC600")
+
+
+# PCA with log expression transformed data
+# Depending on the scale argument the log transformed data used if the argument is equal to TRUE (data is normalized) the results are similar to what it was used to normalize the raw data. 
+log_heatmap_PCA <- prcomp(Expr_data_log[, c(1, 6:10, 12)], scale. = F)
+summary(log_heatmap_PCA) # Sd, variance proportion and cumulative proportion
+
+plot(log_heatmap_PCA, col="#E5F5F9")
+plot(log_heatmap_PCA, type="l", col="#FFC600")
+
+```
+
+## PCA plot
+We will use "scaled_pca" for downstream PCA plots.
+# For now this plots does not take in consideration Ellipsis interval of confidence. We can easily add them once we are done writing up. For now we can considering them while plotting, the default ellipsis is .68 CI.
+
+```{r}
+# We can retrieve this x values for both PC1 and PC2 which are the PCs that accounts for most of the variation in the data and attach them to our expression data to make a better visualization
+pca_expr_data <- cbind(dplyr::select(.data = pca_data, -c(Family) ), scaled_pca$x[, 1:3])
+
+Class <- pca_data$Family
+
+# extract loadings for easier change of color, size and so on.
+PCA_loadings <- data.frame(Variables=rownames(scaled_pca$rotation), scaled_pca$rotation)
+
+(PC1_2 <- ggbiplot::ggbiplot(scaled_pca, obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE) + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8), yend=(PC2*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC1*8.75), #add the transcript names to it manually
+             y=(PCA_loadings$PC2*8.75), 
+             label=PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c( "#86C5D8",  "#620093", "#E7C94C"))+
+    ggrepel::geom_text_repel(data=pca_expr_data, aes(PC1, PC2, label=rownames(pca_expr_data)),
+                        size=2.8, max.overlaps = 25,  min.segment.length = 0, 
+                        segment.curvature = -0.1, 
+                        segment.linetype=5, alpha=.55, hjust=0, direction = "y", segment.size=.25 ) + theme(legend.position = "none")
+)
+
+#ggsave("figures/20230106_PC1_2_WORK.pdf", width = 14, height = 14)
+
+
+(PC2_3 <- ggbiplot::ggbiplot(scaled_pca, choices = c(2,3), obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,  circle = FALSE) + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*8), yend=(PC3*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC2*8.75), #add the transcript names to it manually
+             y=(PCA_loadings$PC3*8.75), 
+             label=PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c( "#86C5D8",  "#620093", "#E7C94C"))+
+    ggrepel::geom_text_repel(data=pca_expr_data, aes(PC2, PC3, label=rownames(pca_expr_data)),
+                        size=2.8, max.overlaps = 18,  min.segment.length = 0, 
+                        segment.curvature = -0.1, 
+                        segment.linetype=5, alpha=.55, hjust=0, direction = "y", segment.size=.25 )+ 
+  guides(color = guide_legend(title = "Family"))
+)
+
+ggsave("figures/20230106_PC2_3_WORK.pdf", width = 14, height = 14)
+
+
+PCs <- ggpubr::ggarrange(PC1_2, PC2_3, 
+                    labels = c("A", "B"),
+                    ncol = 1, nrow = 2)
+PCs
+ 
+ggsave("figures/20230106_PCs_WORK.pdf", width = 14, height = 14)
+ggsave("figures/20230106_PCs.pdf", width = 7, height = 10)
+
+ggsave("figures/20230106_PCs_WORK.jpeg", width = 14, height = 14, dpi = 800)
+ggsave("figures/20230106_PCs.jpeg", width = 7, height = 10, dpi = 800)
+```
+
+# Highly expressed genes PCA
+Genes that mean expression is equal or greater than 2 were used in the PCA
+Also remove COI from PCA analysis
+```{r}
+high_pca_data <- pca_data %>% 
+  mutate(expr_median = round(apply(pca_data[,2:8], 1, median), digits = 4)) %>% 
+  subset(., expr_median>= 2) #%>% dplyr::filter(., class != "COI1")
+  
+high_scaled_pca <- prcomp(high_pca_data[, 3:9], scale. = T)
+summary(high_scaled_pca) # Sd, variance proportion and cumulative proportion
+
+plot(high_scaled_pca, col="#E5F5F9")
+plot(high_scaled_pca, type="l", col="#FFC600")
+
+
+# We can retrieve this x values for both PC1 and PC2 which are the PCs that accounts for most of the variation in the data and attach them to our expression data to make a better visualization
+high_pca_expr_data <- cbind(dplyr::select(.data = high_pca_data, -c(Family) ), high_scaled_pca$x[, 1:3])
+
+Class <- high_pca_data$Family
+
+# extract loadings for easier change of color, size and so on.
+PCA_loadings <- data.frame(Variables=rownames(high_scaled_pca$rotation), high_scaled_pca$rotation)
+
+(PC1_2 <- ggbiplot::ggbiplot(high_scaled_pca, obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE, ellipse.prob = .90,  circle = FALSE) + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8), yend=(PC2*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC1*8.75), #add the transcript names to it manually
+             y=(PCA_loadings$PC2*8.75), 
+             label=PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c( "#86C5D8",  "#620093", "#E7C94C"))+
+    ggrepel::geom_text_repel(data=high_pca_expr_data, aes(PC1, PC2, label=rownames(high_pca_expr_data)),
+                        size=2.8, max.overlaps = 35,  min.segment.length = 0, 
+                        segment.curvature = -0.1, 
+                        segment.linetype=5, alpha=.55, hjust=0, direction = "y", segment.size=.25 ) + theme(legend.position = "none")
+)
+
+#ggsave("figures/20230109_High_PC1_2_WORK_35_overlap.pdf", width = 14, height = 14)
+
+
+(PC2_3 <- ggbiplot::ggbiplot(high_scaled_pca, choices = c(2,3), obs.scale = 1, var.scale = .5, 
+                             varname.adjust = 3,
+                            groups = Class, var.axes = F, varname.size = 2, 
+                  ellipse = TRUE,   circle = FALSE) + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*8), yend=(PC3*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC2*8.75), #add the transcript names to it manually
+             y=(PCA_loadings$PC3*8.75), 
+             label=PCA_loadings$Variables, size=2, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ theme_bw()+
+   scale_color_manual(values=c( "#86C5D8",  "#620093", "#E7C94C"))+
+    ggrepel::geom_text_repel(data=high_pca_expr_data, aes(PC2, PC3, label=rownames(high_pca_expr_data)),
+                        size=2.8, max.overlaps = 25,  min.segment.length = 0, 
+                        segment.curvature = -0.1, 
+                        segment.linetype=5, alpha=.55, hjust=0, direction = "y", segment.size=.25 )+ 
+  guides(color = guide_legend(title = "Family"))
+)
+
+#ggsave("figures/20230109_high_PC2_3_WORK_35overlap.pdf", width = 14, height = 14)
+
+
+PCs <- ggpubr::ggarrange(PC1_2, PC2_3, 
+                    labels = c("A", "B"),
+                    ncol = 1, nrow = 2)
+PCs
+ 
+ggsave("figures/20230109_High_PCs_WORK.pdf", width = 14, height = 14)
+ggsave("figures/20230109_High_PCs_WORK.jpeg", width = 14, height = 14, dpi = 800)
+```
+
+```{r}
+library(tidyr)
+test <- high_scaled_pca$rotation[,1:4]
+
+test$Tissues <- row.names(test)
+```
+

@@ -1,0 +1,447 @@
+---
+title: "Final AFB phylogeny analysis"
+author: "Deisiany"
+date: "2022-09-20"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Load libraries
+```{r}
+#BiocManager::install("Rcpi")
+library(devtools)
+library(phangorn)
+library(ggtree)
+library(treeio)
+library(ggplot2)
+library(tidyverse)
+library(BSgenome)
+library(Biostrings)
+library(XVector)
+library(rtracklayer)
+library(GenomicFeatures)
+library(biomaRt)
+library(ape)
+library(DECIPHER)
+library(Rcpi)
+
+```
+
+From Previous analysis
+```{r}
+setwd("~/GitHub/SoyArcs_manuscript/final_trees/")
+
+GmAFB <- Biostrings::readAAStringSet(filepath = "AFB_input/GmAFB.fasta")
+unique(GmAFB)
+names(GmAFB)
+
+phylotools::rm.sequence.fasta(infile = "AFB_input/GmAFB.fasta", to.rm = "Glyma.02G152800|Glyma.02G152800.3" , outfile = "AFB_input/GmAFB_removed.fasta")
+
+GmAFB <- Biostrings::readAAStringSet(filepath = "AFB_input/GmAFB_removed.fasta")
+unique(GmAFB)
+head(GmAFB, n = 10)
+tail(GmAFB, n=10)
+
+# make alignment
+(AFB_aligned <- DECIPHER::AlignSeqs(GmAFB))
+
+# Fix names, because characters such as | are not accepted in MrBayes
+names(AFB_aligned) <- stringr::str_remove(names(AFB_aligned), ".*\\|") # remove everything before .*\\ the charater |
+
+# write.csv(names(AFB_aligned), "AFB_IDs_all.csv")
+
+# CUt low alignment regions by masking alignment
+(AFB_masked <- DECIPHER::MaskAlignment(AFB_aligned,
+              type = "sequences",
+              windowSize = 6, # same as aliscore default value.
+              threshold = 1,
+              maxFractionGaps = 0.2,
+              includeTerminalGaps = FALSE,
+              correction = FALSE,
+              showPlot = FALSE))
+
+# make it a AAStringSet
+AAstr_AFB <- as(AFB_masked, "AAStringSet")
+BrowseSeqs(AAstr_AFB) # A few sequences seems really small, however I believe they will probably be dropped in MrBayes
+
+writeXStringSet(AAstr_AFB, file="AFB_input//masked_AFB.fasta" )
+
+#Create a matrix so we can create the nexus file next
+(matrix_AFB <- as.matrix(AAstr_AFB, use.names=TRUE))
+
+# Also remove all the * from sequences because MrBayes does not like it
+matrix_AFB <-  sub("\\*", "-", matrix_AFB)
+ 
+DECIPHER::BrowseSeqs(AAStringSet(matrix_AFB))
+
+# Write nex file for MrBayes analysis
+ape::write.nexus.data(matrix_AFB, format = "protein", 
+                      file = "AFB_input/AFB_final.nex", 
+                      datablock = TRUE,
+                      interleaved = TRUE, 
+                      charsperline = NULL,
+                      gap = NULL, missing = NULL)
+
+# MBayes steps was the same as specified in the AFB_final.Rmd file. Outgroup was GLYMA_11G227300 (GmCOI1)
+# mcmcp stopval=0.01 stoprule=yes Mcmcdiagn=yes nchains=4 printfreq=1000 samplefreq=100 burnin=200 relburnin=yes burninfrac=0.25 
+
+```
+
+# Build tree with multiple family
+I will be adding L. japonicus, G. max, G. soja, A. thaliana, Medicago truncatula
+
+```{r error=TRUE}
+Mult_AFB <- Biostrings::readAAStringSet(filepath = "AFB_input/AFB_multi.fasta")
+Mult_AFB <- unique(Mult_AFB)
+names(Mult_AFB)
+
+
+phylotools::rm.sequence.fasta(infile = "AFB_input/AFB_multi.fasta", to.rm =c("Glyma.02G152800|Glyma.02G152800.3", "LOC_Os01g63420|LOC_Os01g63420.2", "LOC_Os01g63420|LOC_Os01g63420.3", "LjContig00357g0020173|LjContig00357g0020173.1"), outfile = "AFB_input/AFB_multi_removed.fasta")
+
+ Mult_AFB2 <- Biostrings::readAAStringSet(filepath = "AFB_input/AFB_multi_removed.fasta")
+names(Mult_AFB2)
+Mult_AFB2 <- unique(Mult_AFB2)
+
+# Biostrings::writeXStringSet(Mult_AFB2, "AFB_input/multi_AFB_final.fasta")
+
+# Load from here fasta for alignment without Rice (removed all rice sequences manually)
+Mult_AFB2 <- Biostrings::readAAStringSet(filepath = "AFB_input/")
+names(Mult_AFB2)
+Mult_AFB2 <- unique(Mult_AFB2)
+
+# make alignment
+(Mult_AFB_aligned <- DECIPHER::AlignSeqs(Mult_AFB2))
+
+# Fix names, because characters such as | are not accepted in MrBayes
+names(Mult_AFB_aligned) <- stringr::str_remove(names(Mult_AFB_aligned), ".*\\|") # remove everything before .*\\ the charater |
+# Biostrings::writeXStringSet(Mult_AFB2, "AFB_input/multi_AFB_aligned.fasta")
+```
+
+
+```{r error=TRUE}
+# write.csv(names(AFB_aligned), "AFB_IDs_all.csv")
+
+# CUt low alignment regions by masking alignment
+(multAFB_masked <- DECIPHER::MaskAlignment(Mult_AFB_aligned,
+              type = "sequences",
+              windowSize = 6, # same as aliscore default value.
+              threshold = 1,
+              maxFractionGaps = 0.2,
+              includeTerminalGaps = FALSE,
+              correction = FALSE,
+              showPlot = FALSE))
+
+# make it a AAStringSet
+AAstr_multAFB <- as(multAFB_masked, "AAStringSet")
+BrowseSeqs(AAstr_multAFB) # A few sequences seems really small, however I believe they will probably be dropped in MrBayes
+
+writeXStringSet(AAstr_multAFB, file="AFB_input/masked_multAFB.fasta" )
+
+#Create a matrix so we can create the nexus file next
+(matrix_multAFB <- as.matrix(AAstr_multAFB, use.names=TRUE))
+
+# Also remove all the * from sequences because MrBayes does not like it
+matrix_multAFB <-  sub("\\*", "-", matrix_multAFB)
+ 
+DECIPHER::BrowseSeqs(AAStringSet(matrix_multAFB))
+
+# Write nex file for MrBayes analysis
+ape::write.nexus.data(matrix_multAFB, format = "protein", 
+                      file = "AFB_input/AFBmult_final.nex", 
+                      datablock = TRUE,
+                      interleaved = TRUE, 
+                      charsperline = NULL,
+                      gap = NULL, missing = NULL)
+
+
+# Mbayes analysis were done following steps in AFB_Final.Rmd script
+
+```
+
+```{bash A. thaliana AFB_phylogeny_construction, error=TRUE}
+./mb
+
+execute AFB_final.nex
+# set  as the outgroup
+outgroup AT2G39940.1
+
+lset nucmodel=protein Rates=invgamma
+# or include Nst=6  ngammacat=4 omegavar=M3 
+prset aamodelpr=fixed(jones) statefreqpr=fixed(empirical) 
+# initial run with aamodelpr=mixed yielded posterior prob of 1 for jones model
+propset ExtTBR$prob=0
+
+mcmcp stopval=0.01 stoprule=yes Mcmcdiagn=yes nchains=6 printfreq=1000 samplefreq=100 burnin=200 relburnin=yes burninfrac=0.25
+```
+
+
+```{bash A. thaliana AFB_phylogeny_construct, error = TRUE}
+mcmc
+sump
+sumt
+
+
+```
+
+# build G. max tree
+```{r}
+tree <- treeio::read.mrbayes(file = "AFB_input/mb_results/AFB_final.nex.con.tre")
+
+ggtree(tree, layout="circular", branch.length = 'none') + geom_tiplab(size=3, align = T) 
+
+
+# ggsave("AFB_input/figures/g_max_mb_tree.pdf", height = 8, width = 7)
+
+```
+
+# Build G. max tree with multiple species.
+```{r}
+tree <- treeio::read.mrbayes(file = "AFB_input/mb_results_mult/AFBmult_final.nex.con.tre")
+
+g_tree <- ggtree(tree, layout="circular", branch.length = 'none') + geom_tiplab(size=3, align = T) 
+g_tree 
+
+ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) + geom_tiplab(align = F)+
+  geom_text(aes(label=node), # node numbers
+            size=3, hjust=-.3, color="red", fontface=2) 
+
+#ggsave("AFB_input/figures/AFB_nodes.pdf", width = 15, height = 15)
+```
+
+Get Class based on nodes and assign orthology based on Arabidopsis
+```{r}
+class_COI1 <- data.frame(get_taxa_name(g_tree, node = 80)) # COI1
+class_COI1 <- class_COI1 %>% dplyr::rename(tair_locus = `get_taxa_name.g_tree..node...80.`) %>% 
+  mutate(class = "COI1",
+         name =ifelse(grepl("Glyma", .$tair_locus), "GmCOI1", ""),
+         Clade = "V")
+
+class_AFB4_5 <- data.frame(get_taxa_name(g_tree, node = 49)) # AFB4,5
+class_AFB4_5 <- class_AFB4_5 %>% dplyr::rename(tair_locus = `get_taxa_name.g_tree..node...49.`) %>% 
+  mutate(class = "AFB4/5",
+         name = ifelse(grepl("Glyma", .$tair_locus), "GmAFB4/5", ""),
+         Clade = "IV")
+
+class_AFB6 <- data.frame(get_taxa_name(g_tree, node = 59)) # AFB6
+class_AFB6 <- class_AFB6 %>% dplyr::rename(tair_locus = `get_taxa_name.g_tree..node...59.`) %>% 
+  mutate(class = "AFB6",
+         name = ifelse(grepl("Glyma", .$tair_locus), "GmAFB6", ""),
+         Clade = "III")
+
+class_AFB2_3 <- data.frame(get_taxa_name(g_tree, node = 64)) # AFB2_3
+class_AFB2_3 <- class_AFB2_3 %>% dplyr::rename(tair_locus = `get_taxa_name.g_tree..node...64.`) %>% 
+  mutate(class = "AFB2/3",
+         name = ifelse(grepl("Glyma", .$tair_locus), "GmAFB2/3", ""),
+         Clade = "II")
+
+class_TIR1_AFB1 <- data.frame(get_taxa_name(g_tree, node = 72)) # TIR1_AFB1
+class_TIR1_AFB1 <- class_TIR1_AFB1 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.g_tree..node...72.`) %>% 
+  mutate(class = "TIR1/AFB1",
+         name = ifelse(grepl("Glyma", .$tair_locus), "GmTIR1/AFB1", ""),
+         Clade = "I")
+
+TIR_AFB_class <- rbind(class_TIR1_AFB1, class_AFB2_3, class_AFB4_5, class_AFB6, class_COI1)
+
+# Assign orthology
+TIR_AFB_class <- TIR_AFB_class %>% mutate(ensembl_gene_id = str_remove_all(.$tair_locus, "\\.[^.]*$"))
+
+
+Gm_ortholog <- TIR_AFB_class %>% 
+  dplyr::filter(str_detect(ensembl_gene_id, "Glyma")) %>% 
+  # arrange by tree order.
+  group_by(name) %>% unique() %>% 
+  mutate(ortholog_name = dplyr::row_number()) %>% 
+  mutate(ortholog_name = paste0(name, "_", LETTERS[ortholog_name]))
+
+#write_csv(Gm_ortholog, "AFB_input/2023_0919_AFB_Gm_ortholog.csv")
+
+df4tips <- left_join(TIR_AFB_class, Gm_ortholog)
+
+df4tips[c(27:28), 5] <- c("MtAFB6") #Assign AFB6 to IDs
+df4tips[29, 5] <- c("LjAFB6") 
+
+df4tips2 <- within(df4tips, ortholog_name[is.na(ortholog_name)] <- tair_locus[is.na(ortholog_name)])
+
+
+```
+
+Now I want to join dataframe with nodes classification and tips and arabidopsis classification according to ViVa tool paper.
+```{r}
+# change tips according to Arabidopsis classification
+names <- as.data.frame(tree@phylo[["tip.label"]]) %>% dplyr::rename(tair_locus =`tree@phylo[["tip.label"]]`)
+
+IDs <- readxl::read_xls("../Arquive/AFB_files/all_IDs.xls") %>%
+  dplyr::rename(tair_locus =gene_IDs)
+IDs
+
+all_Tip_IDs <- left_join(names, IDs[,-3]) %>% 
+  mutate(ensembl_gene_id = str_remove_all(tair_locus, "\\.[^.]*$"))
+
+TipLabel <- left_join(all_Tip_IDs, df4tips2)
+
+TipLabel <- TipLabel %>% dplyr::rename(name_ID =names) %>% as.data.frame()
+
+TipLabel2 <- cbind(TipLabel, replicate(1,TipLabel$name_ID)) %>% 
+  dplyr::rename(Tips_ID = `replicate(1, TipLabel$name_ID)`)
+
+TipLabel2$name_ID <- gsub( ".*/", "At", TipLabel2$name_ID)
+
+TipLabel2 <- within(TipLabel2, class[is.na(class)] <- 
+                      gsub("At", "", name_ID[is.na(class)]))
+
+TipLabel2[c(3, 39),2] <- c("MtAFB6", "LjAFB6") # correct row 3 and 39 back to what they are. they are not Arabidobsis but MtAFB6 and LjAFB6
+
+TipLabel2[c(1:2, 4:7, 915, 34:38, 40:45), 7] <- NA #ortholog_name column
+
+# Join ortholog name with name_ID
+TipLabel3 <-
+  TipLabel2 %>% dplyr::relocate(ortholog_name, .after = name_ID) %>%
+  unite("New_label",
+        ortholog_name:name_ID,
+        sep = "_",
+        na.rm = T) #%>% .[,-c(5:6)]
+
+
+# make a clade column for make visualization of tree easier to readers 
+TipLabel3 <- TipLabel3 %>%
+  mutate(
+    Clade = ifelse(grepl("COI", .$New_label), "V",
+                   ifelse(
+                     grepl("AFB1", .$New_label), "I",
+                     ifelse(grepl("TIR1", .$New_label), "I",
+                            ifelse(
+                              grepl("AFB2", .$New_label), "II",
+                              ifelse(grepl("AFB3", .$New_label), "II",
+                                     ifelse(
+                                       grepl("AFB4", .$New_label), "IV",
+                                       ifelse(
+                                         grepl("AFB5", .$New_label),
+                                         "IV",
+                                         ifelse(grepl("AFB6", .$New_label), "III",                                                                  ifelse(
+                                           grepl("Medtr4g091290.1", .$New_label), "III", Clade
+                                         ))
+                                       )
+                                     ))
+                            ))
+                   )),
+    class = ifelse(
+      grepl("Medtr8g098695.2", .$tair_locus),
+      "AFB6",
+      ifelse(grepl("Medtr4g091290.1", .$tair_locus), "AFB6", class)
+    ),
+    class = ifelse(
+      grepl("COI", .$New_label),
+      "COI1",
+      ifelse(
+        grepl("AFB1", .$New_label),
+        "TIR1/AFB1",
+        ifelse(
+          grepl("TIR1", .$New_label),
+          "TIR1/AFB1",
+          ifelse(
+            grepl("AFB2", .$New_label),
+            "AFB2/3",
+            ifelse(
+              grepl("AFB3", .$New_label),
+              "AFB2/3",
+              ifelse(
+                grepl("AFB4", .$New_label),
+                "AFB4/5",
+                ifelse(
+                  grepl("AFB5", .$New_label),
+                  "AFB4/5",
+                  ifelse(grepl("LjAFB6", .$New_label), "AFB6", class)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
+```
+
+
+```{r}
+#change tree tip.label
+tree@phylo[["tip.label"]] <- TipLabel3[[2]][match(tree@phylo[["tip.label"]], TipLabel3[[1]])]
+
+# Colour *Malus domestica* genes
+TipLabel4 <- TipLabel3 %>%
+  dplyr::select(tair_locus, New_label, ensembl_gene_id, class, Clade) %>%
+  dplyr::mutate( Species = tair_locus )
+
+TipLabel4$Species <- TipLabel4$Species %>%  
+  gsub("^AT(.*)", "A. thaliana", .) %>%
+  gsub("^Medtr(.*)", "M. truncatula", .)  %>%
+  gsub("^Glyma(.*)", "G. max", .) %>% gsub("^Glyso(.*)", "G. soja", .) %>%
+  gsub("^Lj(.*)", "L. japonicus", .) 
+
+write_csv(IDs, "AFB_input/AFB_Ortho_Tip_Label.csv")
+#read_csv("AFB_input/AFB_Ortho_Tip_Label.csv")
+#tipLabel <- IDs[,-1]
+
+p <- ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) +
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = -.9, nudge_y = .2, hjust = -.05, size = 2.5)
+p
+
+(p2 <- p %<+% TipLabel4[1:45,-1] + 
+  geom_tippoint(aes(fill=factor(Species)), 
+                size=4.2, shape=21) + geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = 
+                      c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species"))
+  )
+
+tipLabel5 <- TipLabel4 %>% 
+   mutate(tip_color = ifelse(str_detect(New_label, "At"), "TO_not",
+                             ifelse(str_detect(New_label, "LjA"), "TO_not",
+                             ifelse(str_detect(New_label, "Mt"), "TO_not", "TO_color"))))
+
+#tipLabel5 <- tipLabel5 %>% 
+#   mutate(tip_color = ifelse(str_detect(New_label, "At", negate = FALSE), "TO_color", #tip_color))
+  
+p %<+% tipLabel5[1:45,-1] + 
+  geom_tiplab(aes(subset=tip_color == "TO_not"), size=3, hjust=-.1, fontface=2)+ #subset tree in order to get classified (TIR1/AFB) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_color"), 
+              colour='black', size=3, hjust=-.1) +
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=4.2, shape =21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = 
+                      c('grey36', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + 
+  theme(legend.position = c(1.09,0.12)) + 
+  geom_point(aes(shape = Clade)) +
+  theme(legend.text = element_text(face = "italic"))
+
+
+ggsave("AFB_input/figures/AFB_FINAL.pdf", height = 11, width = 14, dpi = 1000)
+
+# save in png
+p %<+% tipLabel5[1:45,-1] + 
+  geom_tiplab(aes(subset=tip_color == "TO_not"), size=3, hjust=-.1, fontface=2)+ #subset tree in order to get classified (TIR1/AFB) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_color"), 
+              colour='black', size=4, hjust=-.1) +
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=4.2, shape =21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = 
+                      c('grey36', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + 
+  theme(legend.position = c(1.10, 0.10)) + 
+  geom_point(aes(shape = Clade)) +
+  theme(legend.text = element_text(face = "italic"))
+
+
+ggsave("AFB_input/figures/AFB_FINAL.jpeg", height = 14, width = 18, dpi = 1000)
+
+
+```
+

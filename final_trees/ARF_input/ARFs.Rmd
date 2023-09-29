@@ -1,0 +1,617 @@
+---
+title: "ARFs final philogeny analysis"
+author: "Deisiany"
+date: "2022-09-22"
+output: html_document
+---
+
+
+# Load libraries
+```{r}
+library(devtools)
+library(phangorn)
+library(ggtree)
+library(treeio)
+library(ggplot2)
+library(tidyverse)
+library(BSgenome)
+library(Biostrings)
+library(XVector)
+library(rtracklayer)
+library(GenomicFeatures)
+library(biomaRt)
+library(ape)
+library(DECIPHER)
+library(Rcpi)
+
+```
+In the past analysis we had wrangled data downloaded through a BLAST search. Now we will load this data in and make a couple deletions for families that we are not interested on having in the final trees.
+```{r}
+GmARFs <- Biostrings::readAAStringSet(filepath = "Gm_ARFs.txt")
+unique(GmARFs)
+names(GmARFs)
+
+
+# make sequencing alignment
+(AlignedARFs <- DECIPHER::AlignSeqs(GmARFs))
+
+#Biostrings::writeXStringSet(AlignedARFs, "ARF_Aligned.fasta")
+
+# CUt low alignment regions by masking alignment
+(ARF_masked <- DECIPHER::MaskAlignment(AlignedARFs,
+              type = "sequences",
+              windowSize = 6, # same as aliscore default value.
+              threshold = 1,
+              maxFractionGaps = 0.2,
+              includeTerminalGaps = FALSE,
+              correction = FALSE,
+              showPlot = FALSE))
+
+
+# make it a AAStringSet
+AAstr_ARF <- as(ARF_masked, "AAStringSet")
+BrowseSeqs(AAstr_ARF) # A few sequences seems really small, however I believe they will probably be dropped in MrBayes
+
+writeXStringSet(AAstr_ARF, file="masked_ARF.fasta" )
+
+#Create a matrix so we can create the nexus file next
+(matrix_ARF <- as.matrix(AAstr_ARF, use.names=TRUE))
+
+# Also remove all the * from sequences because MrBayes does not like it
+matrix_ARF <-  sub("\\*", "-", matrix_ARF)
+
+DECIPHER::BrowseSeqs(AAStringSet(matrix_ARF))
+
+# Write nex file for MrBayes analysis
+ape::write.nexus.data(matrix_ARF, format = "protein", 
+                      file = "ARF_final2.nex", 
+                      datablock = TRUE,
+                      interleaved = TRUE, 
+                      charsperline = NULL,
+                      gap = NULL, missing = NULL)
+
+```
+
+```{bash A. thaliana ARF_phylogeny_construction, eval=FALSE}
+# Start MrBayes
+./mb
+
+execute ARF_final.nex
+# set ARF17 as the outgroup
+outgroup Glyma.10G210600.1
+
+lset nucmodel=protein Rates=invgamma
+# or include Nst=6  ngammacat=4 omegavar=M3 
+prset aamodelpr=fixed(jones) statefreqpr=fixed(empirical) 
+# initial run with aamodelpr=mixed yielded posterior prob of 1 for jones model
+propset ExtTBR$prob=0
+
+mcmcp Mcmcdiagn=yes nchains=6 printfreq=1000 samplefreq=100 burnin=200 relburnin=yes burninfrac=0.25 
+
+mcmc
+sump
+sumt
+
+
+```
+
+  Now we can also get started with the final_multiple families tree to support our classification of ARFs. I will be adding L. japonicus, G. max, G. soja, A. thaliana, Medicago truncatula, 
+
+```{r}
+mult_ARFs <- Biostrings::readAAStringSet("ARFunique 2.fasta")
+names(mult_ARFs)
+unique(mult_ARFs)
+
+#Make alignment
+(Mult_ARF_aligned <- DECIPHER::AlignSeqs(mult_ARFs))
+
+#writeXStringSet(Mult_ARF_aligned, file="ARF_aligned.fasta" )
+```
+# Cut low alignment regions by using mask alignment
+```{r}
+(multARF_masked <- DECIPHER::MaskAlignment(Mult_ARF_aligned,
+              type = "sequences",
+              windowSize = 6, # same as aliscore default value.
+              threshold = 1,
+              maxFractionGaps = 0.2,
+              includeTerminalGaps = FALSE,
+              correction = FALSE,
+              showPlot = FALSE))
+
+# make it a AAStringSet
+AAstr_multARF <- as(multARF_masked, "AAStringSet")
+DECIPHER::BrowseSeqs(AAstr_multARF) # A few sequences seems really small, however I believe they will probably be dropped in MrBayes
+
+writeXStringSet(AAstr_multARF, file="masked_multARF.fasta" )
+
+#Create a matrix so we can create the nexus file next
+(matrix_multARF <- as.matrix(AAstr_multARF, use.names=TRUE))
+
+# Also remove all the * from sequences because MrBayes does not like it
+matrix_multARF <-  sub("\\*", "-", matrix_multARF)
+ 
+DECIPHER::BrowseSeqs(AAStringSet(matrix_multARF))
+
+# Write nex file for MrBayes analysis
+ape::write.nexus.data(matrix_multARF, format = "protein", 
+                      file = "ARFmult_final.nex", 
+                      datablock = TRUE,
+                      interleaved = TRUE, 
+                      charsperline = NULL,
+                      gap = NULL, missing = NULL)
+
+
+# Mbayes analysis were done following steps in ARF_Final.Rmd script
+```
+
+# ARCs
+https://www.docs.arc.vt.edu/resources/compute/00tinkercliffs.html
+https://www.docs.arc.vt.edu/software/r.html
+
+Screen
+
+interact --nodes=1 --ntasks-per-node=16 --cpus-per-task=1 --partition=normal_q --time=6-00:00:00 --account=apple_rootstock-scion
+
+module reset
+module load MrBayes/3.2.7-gompi-2020b
+
+
+
+
+```{bash A. thaliana ARF_phylogeny_construction, eval=FALSE}
+# Start MrBayes
+mpirun mb <a txt file containing this code chunk>
+
+execute ARFmult_final.nex;
+# set ARF17 as the outgroup
+outgroup AT1G77850.1;
+
+lset nucmodel=protein Rates=invgamma;
+# or include Nst=6  ngammacat=4 omegavar=M3 
+prset aamodelpr=fixed(jones) statefreqpr=fixed(empirical);
+# initial run with aamodelpr=mixed yielded posterior prob of 1 for jones model
+propset ExtTBR$prob=0;
+
+mcmcp samplefreq=10000 printfreq=1000;
+mcmcp nruns=2 stoprule=YES burninfrac=.25;
+mcmcp stopval=0.01 minpartfreq=0.05;
+mcmcp mcmcdiagn=YES diagnfreq=100;
+mcmcp nchains=8; 
+
+#https://evolution.gs.washington.edu/sisg/2016/2016_SISG_19_10.pdf 
+# mcmcp Mcmcdiagn=yes ngen=9000000 nchains=4 temp=1 Swapfreq=2 printfreq=1000 samplefreq=10000 burnin=200 burninfrac=0.25 nruns=2 
+
+mcmc;
+sump;
+sumt;
+
+
+```
+
+# ARC
+ Check for how a job is running and the output of the job (slurm file)in real time
+ tail -f <slurm.out>
+ 
+ squeue -u <PID>   # to check jobs and its IDs
+ jobload <jobID>   # to check how well a job is running.
+ htop <node?>
+ 
+ 
+# build G. max tree
+```{r}
+tree <- treeio::read.mrbayes(file = "mb_results/ARF_final2.nex.con.tre")
+
+ggtree(tree, layout="circular", branch.length = 'prob') + geom_tiplab(size=3, align = T) 
+
+
+ggsave("figures/g_max_mb_tree.pdf", height = 13, width = 13)
+
+```
+
+# Build G. max tree with multiple species.
+```{r}
+tree <- treeio::read.mrbayes(file = "mb_results_mult/ARFmult_final.nex.con.tre")
+
+g_tree <- ggtree(tree, layout="circular", branch.length = 'prob') + geom_tiplab(size=3, align = T) 
+g_tree
+
+# change tips according to Arabidopsis classification
+names <- as.data.frame(tree@phylo[["tip.label"]])
+IDs <- readxl::read_xlsx("../../Gm_GeneIDs.xlsx", sheet = "At_ARF") %>%
+  dplyr::rename(ensembl_gene_id = tair_locus)
+IDs
+
+IDs <- IDs %>%  mutate(tair_locus = ensembl_gene_id)
+
+# We want to join annotated A. thaliana gene IDs with tip trees, and duplicate those who are not classified such as all the other species.
+IDs$tair_locus <- ifelse(IDs$tair_locus=="AT5G62000", 
+                           paste0(IDs$tair_locus, ".2"), paste0(IDs$tair_locus,".1"))
+
+TipLabel <- merge(x=names, y=IDs, by.x='tree@phylo[["tip.label"]]', by.y="tair_locus", all.x=T)
+
+tipLabel <- TipLabel %>% dplyr::select(`tree@phylo[["tip.label"]]`, name, class) %>% 
+  dplyr::rename(., tair_locus =`tree@phylo[["tip.label"]]`, Class=class)
+```
+
+Now we can pull the classes for other species based on Arabidopsis orthology and then stich that to our dataframe, so our G. max are also labeled according to their orthology
+```{r}
+p <- ggtree(tree, layout="circular", branch.length = 'prob') + geom_tiplab(size=3, align = T)
+
+p
+
+# Tips classification
+#classA <- data.frame(get_taxa_name(p3, node = 185))# the whole class A
+classA1 <- data.frame(get_taxa_name(p, node = 233)) # ARF5 Class A
+classA1 <- classA1 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...233.`) %>%  
+  mutate(class = "A",
+         name = "GmARF5")
+
+classA2 <- data.frame(get_taxa_name(p, node = 211)) # ARF7,19 Class A
+classA2 <- classA2 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...211.`) %>%  
+  mutate(class = "A",
+         name = "GmARF7/19")
+
+classA3 <- data.frame(get_taxa_name(p, node = 188)) # ARF8 Class A
+classA3 <- classA3 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...188.`) %>%  
+  mutate(class = "A",
+         name = "GmARF8")
+
+classA4 <- data.frame(get_taxa_name(p, node = 198)) # ARF6 Class A
+classA4 <- classA4 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...198.`) %>%  
+  mutate(class = "A",
+         name = "GmARF6")
+
+
+#classB <- data.frame(get_taxa_name(p, node = 239)) # The whole class B
+classB1 <- data.frame(get_taxa_name(p, node = 241)) # ARF4
+classB1 <- classB1 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...241.`) %>%  
+  mutate(class = "B",
+         name = "GmARF4")
+
+classB2 <- data.frame(get_taxa_name(p, node = 250)) # ARF3
+classB2 <- classB2 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...250.`) %>%  
+  mutate(class = "B",
+         name = "GmARF3")
+
+classB3 <- data.frame(get_taxa_name(p, node = 300)) # ARF2 - Glyma.03G208800.1 is also ARF2 ortholog
+classB3 <- classB3 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...300.`) %>%  
+  mutate(class = "B",
+         name = "GmARF2")
+classB3[nrow(classB3) + 1,] = c("Glyma.03G208800.1","B", "GmARF2") #add missing Glyma
+
+classB4 <- data.frame(get_taxa_name(p, node = 264)) # ARF1
+classB4 <- classB4 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...264.`) %>%  
+  mutate(class = "B",
+         name = "GmARF1")
+
+classB5 <- data.frame(get_taxa_name(p, node = 272)) # ARF11,18
+classB5 <- classB5 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...272.`) %>%  
+  mutate(class = "B",
+         name = "GmARF11/18")
+
+classB6 <- data.frame(get_taxa_name(p, node = 290)) # ARF13 only the Glyma 
+classB6 <- classB6 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...290.`) %>%  
+  mutate(class = "B",
+         name = "GmARF13")
+
+classB7 <- data.frame(get_taxa_name(p, node = 280)) # ARF9
+classB7 <- classB7 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...280.`) %>%  
+  mutate(class = "B",
+         name = "GmARF9")
+
+classC <- data.frame(get_taxa_name(p, node = 309)) # Class C ARF10,16 - remaining ARFs are ARF17
+classC <- classC %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...309.`) %>%  
+  mutate(class = "C",
+         name = "GmARF10/16")
+
+classC1 <- data.frame(get_taxa_name(p, node = 331)) # Class C - ARF17
+classC1 <- classC1 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...331.`) %>%  
+  mutate(class = "C",
+         name = "GmARF17")
+
+classC2 <- data.frame(get_taxa_name(p, node = 327)) # Class C - ARF17
+classC2 <- classC2 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...327.`) %>%  
+  mutate(class = "C",
+         name = "GmARF17")
+
+classC3 <- data.frame(get_taxa_name(p, node = 336)) # Class C - ARF17
+classC3 <- classC3 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...336.`) %>%  
+  mutate(class = "C",
+         name = "GmARF17")
+
+classC4 <- data.frame(get_taxa_name(p, node = 344)) # Class C - ARF17
+classC4 <- classC4 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...344.`) %>%  
+  mutate(class = "C",
+         name = "GmARF17")
+
+classC5 <- data.frame(get_taxa_name(p, node = 178)) # Class C - ARF17
+classC5 <- classC5 %>% 
+  dplyr::rename(tair_locus = `get_taxa_name.p..node...178.`) %>%  
+  mutate(class = "C",
+         name = "GmARF17")
+
+
+ARF_class <- rbind(classA1, classA2, classA3, classA4, classB1, classB2, classB3, classB4, classB5, classB6, classB7, classC, classC1, classC2, classC3, classC4, classC5)
+
+```
+
+In order to keep the order we need to create ortholog names before joining data frames
+```{r}
+
+# Assign orthology
+ARF_class <- ARF_class %>% mutate(ensembl_gene_id = str_remove_all(.$tair_locus, "\\.[^.]*$"))
+
+
+Gm_ortholog <- ARF_class %>% dplyr::filter(str_detect(ensembl_gene_id, "Glyma")) %>% 
+  # arrange by tree order.
+  group_by(name) %>% unique() %>% 
+  mutate(ortholog_name = dplyr::row_number()) %>% 
+  mutate(ortholog_name = paste0(name, "_", LETTERS[ortholog_name]))
+
+# write_csv(Gm_ortholog, "ARF_Gm_ortholog.csv")
+
+```
+
+Now lets combine data_frames with classes based on nodes and arabidopsis to our previous tipLabel dataframe
+```{r}
+#First we need our columns to match
+tipLabel <- within(tipLabel, tair_locus[is.na(tair_locus)] <- name[is.na(tair_locus)])
+
+dfTEST <- merge(Gm_ortholog,tipLabel, by=c("tair_locus"), all=TRUE) %>% 
+  unite("ortholog_name", ortholog_name:name.y, na.rm = T)
+
+dfTEST[79:176, 5] <- NA
+
+dfTEST <- within(dfTEST, ortholog_name[is.na(ortholog_name)] <- tair_locus[is.na(ortholog_name)])
+
+# join ARF_class so we can get whole classification to tree. # Join columns
+dfTEST2 <- merge(dfTEST, ARF_class, by= "tair_locus", all=T) 
+dfTEST2[1:23, 7] <- NA 
+dfTEST2 <- dfTEST2 %>% unite("class", Class:class.y, na.rm=T)
+
+dfTEST2 <- dfTEST2[, -c(2,3,4,7,8)] %>% 
+  mutate(ensembl_gene_id = str_remove_all(.$tair_locus, "\\.[^.]*$"))
+
+
+New_label <- dfTEST2 %>% 
+  mutate(tiplabel = tair_locus) %>% 
+  dplyr::relocate(tiplabel, .after = ortholog_name)
+New_label[c(1:23, 79:176), 3] <- NA
+
+New_label <- New_label %>% 
+  unite("tiplabel", sep = "/", ortholog_name:tiplabel, na.rm = T)
+
+```
+
+This chunck of code corresponds to the first trees I built. In the next chunck I will have the Final trees
+```{r}
+# Colour genes
+IDs <- tipLabel %>%
+  dplyr::select(tair_locus, name, Class) %>%
+  dplyr::mutate( Species = tair_locus )
+
+IDs$Species <- IDs$Species %>%  
+  gsub("^AT(.*)", "A. thaliana", .) %>%
+  gsub("^Medtr(.*)", "M. truncatula", .)  %>%
+  gsub("^Glyma(.*)", "G. max", .) %>% gsub("^Glyso(.*)", "G. soja", .) %>%
+  gsub("^Lj(.*)", "L. japonicus", .) 
+
+# write_csv(IDs, "ARF_Tip_Label.csv")
+IDs <-read_csv("ARF_Tip_Label.csv")
+IDs_classified <- readxl::read_xls("ARF_classes.xls")
+IDs <- merge(IDs, IDs_classified, by='name', all.y=T )
+
+tipLabel <- IDs %>% dplyr::select(., name, tair_locus, Species, Class=`ARF Class`)
+
+
+p <- ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) +
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = -1.5, nudge_y = .5, hjust = -.05, size = 4)
+p
+
+(p2 <- p %<+% tipLabel + 
+  geom_tippoint(aes(fill=factor(Species)), 
+                size=3.5, shape=21) + geom_tiplab( size=3, hjust=-.1, align = T) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species"))
+  )
+# ggsave("figures/aligned_tips_ARF_colored.pdf", width = 17, height = 17)
+
+(p2 <- p %<+% tipLabel + 
+  geom_tippoint(aes(fill=factor(Species)), 
+                size=3.5, shape=21) + geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) 
+  )
+
+tipLabel <- tipLabel %>% 
+   dplyr::mutate(tip_color = ifelse(str_detect(name, "At", negate = TRUE), "TO_not", name))
+
+tipLabel2 <- tipLabel %>% 
+   mutate(tip_color = ifelse(str_detect(tip_color, "At", negate = FALSE), "TO_color", tip_color))
+
+
+ p %<+% tipLabel2 + 
+  geom_tiplab(aes(color = factor(tip_color)), size=3, hjust=-.15) + 
+   scale_color_manual(values = c("red", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=4.2, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+#without tips aligned
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.15, fontface=2) + #subset tree in order to get classified (TIR1/ARF) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.15) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+# add node number so we can label the classes within arfs
+ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) + geom_tiplab(align = T)+
+  geom_text(aes(label=node), size=2, hjust=-.3, color="red", fontface=2) + 
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = -.1, nudge_y = .1, hjust = -.05, size = 1.5)
+#ggsave("figures/ARF_Nodes.pdf", height = 13, width = 15)
+
+
+# Tree with aligned tips   
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T) + #subset tree in order to get classified (TIR1/ARF) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+  
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T) + #subset tree in order to get classified (TIR1/ARF) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_strip("AtARF17" , "Glyma.12G174100.1", barsize=1.5, color='#08519c', label = "Class C", angle=-45, offset.text = 1, offset = 10.5) +
+  geom_strip("AtARF5" , "Glyma.08G100100.3", barsize=1.5, color='#6baed6', label = "Class A", angle=65, offset.text = 1, offset = 10.5) +
+  geom_strip("AtARF4" , "Glyma.01G103500.1", barsize=1.5, color='#3182bd', label = "Class B", angle=20, offset.text = 1, offset = 10.5) +
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) + theme(legend.text = element_text(face = "italic"))
+
+# ggsave("figures/test2.pdf", height = 13, width = 15)
+
+# Now I will also add the ARFs class
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T) + #subset tree in order to get classified (TIR1/ARF) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) +
+  geom_point2(aes(subset=(node==185)), shape=1, size=9, fill="red") +
+  geom_point2(aes(subset=(node==239)), shape=6, size=9) +
+  geom_point2(aes(subset=(node==181)), shape=5, size=9) +
+  geom_point2(aes(subset=(node==177)), shape=5, size=9) +
+  geom_point2(aes(subset=(node==336)), shape=5, size=9) +
+  geom_point2(aes(subset=(node==308)), shape=5, size=9) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T) + #subset tree in order to get classified (TIR1/ARF) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) +
+  geom_point2(aes(subset=(node==185)), shape=21, size=9, fill="beige", alpha=.5) +
+  geom_point2(aes(subset=(node==239)), shape=25, size=9, fill="azure1", alpha=.5) +
+  #geom_point2(aes(subset=(node==344)), shape=22, size=6, fill="bisque1", alpha=.5) +
+  geom_point2(aes(subset=(node==177)), shape=22, size=9, fill="bisque1", alpha=.5) +
+  #geom_point2(aes(subset=(node==336)), shape=22, size=9, fill="bisque1", alpha=.5) +
+  geom_point2(aes(subset=(node==308)), shape=22, size=9, fill="bisque1", alpha=.5) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) + theme(legend.text = element_text(face = "italic"))
+
+
+p4 <- p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T ) +
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) + 
+  geom_point(aes( color=Species, shape=Class), size=3, na.rm=TRUE) +  
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) + 
+  theme(legend.text = element_text(face = "italic")) + 
+  scale_colour_discrete(na.translate = F)
+
+p4 + scale_colour_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) 
+
+
+ggsave("figures/ARF_Class5_colored_tree.pdf", height = 13, width = 15)
+
+```
+
+Final trees
+```{r}
+# Colour genes
+IDs <- New_label %>%
+  dplyr::select(tiplabel, class, tair_locus) %>%
+  dplyr::rename( Species = tair_locus )
+
+IDs$Species <- IDs$Species %>%  
+  gsub("^AT(.*)", "A. thaliana", .) %>%
+  gsub("^Medtr(.*)", "M. truncatula", .)  %>%
+  gsub("^Glyma(.*)", "G. max", .) %>% gsub("^Glyso(.*)", "G. soja", .) %>%
+  gsub("^Lj(.*)", "L. japonicus", .) 
+
+#write_csv(IDs, "ARF_ortho_tip_Label.csv")
+IDs <-read_csv("ARF_ortho_tip_Label.csv")
+
+#set tip color based on species
+tipLabel <- IDs %>% 
+   dplyr::mutate(tip_color = ifelse(str_detect(tiplabel, "At", negate = TRUE), "TO_not", tiplabel))
+
+tipLabel2 <- tipLabel %>% 
+   mutate(tip_color = ifelse(str_detect(tip_color, "At", negate = FALSE), "TO_color", tip_color))
+
+
+# Read tree again
+tree <- treeio::read.mrbayes(file = "mb_results_mult/ARFmult_final.nex.con.tre")
+
+#change tree tip.label
+tree@phylo[["tip.label"]] <- New_label[[2]][match(tree@phylo[["tip.label"]], New_label[[1]])]
+
+p <- ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob_percent', ladderize = TRUE) +
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = 0, nudge_y = -0, hjust = 1, size = 3.5)
+p
+
+# I would like to have Clade and Class under the same notation for ARFs
+
+tipLabel3 <- tipLabel2 %>% mutate(class = ifelse(grepl("A", .$class), "A - II",
+                                   ifelse(grepl("B", .$class), "B - I",
+                                          ifelse(grepl("C", .$class), "C - III", "class"))))
+
+(p4 <- p %<+% tipLabel3  + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=4, hjust=-.01, fontface=2, align = T ) +
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=4, hjust=-.01, align = T) + 
+  geom_point(aes( color=Species, shape=class), size=4) +  
+  guides(fill=guide_legend(title="Species"), 
+         shape=guide_legend(title="Class/Clade")) + 
+    theme(legend.position = c(.95, 0.1))  + 
+    theme(legend.text = element_text(face = "italic", size = 12)))
+
+
+p4 + scale_colour_manual(values = 
+                           c('grey36', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) 
+
+
+ggsave("figures/ARF_FINAL.pdf", height = 23, width = 22, dpi = 1000)
+
+
+```
+
+It is not possible to save this image in good resolution for .png or jpeg. I will use pdf to keep resolution and size, and then add to manuscript last.

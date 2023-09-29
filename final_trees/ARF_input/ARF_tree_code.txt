@@ -1,0 +1,128 @@
+Last written code for ARF trees
+
+
+```{r}
+tree <- treeio::read.mrbayes(file = "mb_results_mult/ARFmult_final.nex.con.tre")
+
+g_tree <- ggtree(tree, layout="circular", branch.length = 'prob') + geom_tiplab(size=3, align = T) 
+g_tree
+
+# change tips according to Arabidopsis classification
+names <- as.data.frame(tree@phylo[["tip.label"]])
+IDs <- readxl::read_xlsx("../../Gm_GeneIDs.xlsx", sheet = "At_ARF")
+IDs
+
+# We want to join annotated A. thaliana gene IDs with tip trees, and duplicate those who are not classified such as all the other species.
+IDs$tair_locus <- ifelse(IDs$tair_locus=="AT5G62000", 
+                         paste0(IDs$tair_locus, ".2"), paste0(IDs$tair_locus,".1"))
+
+TipLabel <- merge(x=names, y=IDs, by.x='tree@phylo[["tip.label"]]', by.y="tair_locus", all.x=T)
+tipLabel <- TipLabel %>% dplyr::select(`tree@phylo[["tip.label"]]`, name, class) %>% 
+  dplyr::rename(., tair_locus =`tree@phylo[["tip.label"]]`)
+
+tipLabel <- within(tipLabel, name[is.na(name)] <- tair_locus[is.na(name)])
+
+#change tree tip.label
+tree@phylo[["tip.label"]] <- tipLabel[[2]][match(tree@phylo[["tip.label"]], tipLabel[[1]])]
+
+ggtree(tree, layout="circular", branch.length = 'prob') + geom_tiplab(size=3, align = T) 
+
+
+# Colour *Malus domestica* genes
+IDs <- tipLabel %>%
+  dplyr::select(tair_locus, name, class) %>%
+  dplyr::mutate( Species = tair_locus )
+
+IDs$Species <- IDs$Species %>%  
+  gsub("^AT(.*)", "Arabidopsis", .) %>%
+  gsub("^Medtr(.*)", "M. truncatula", .)  %>%
+  gsub("^Glyma(.*)", "G. max", .) %>% gsub("^Glyso(.*)", "G. soja", .) %>%
+  gsub("^Lj(.*)", "Lotus janponicus", .) 
+
+# write_csv(IDs, "ARF_Tip_Label.csv")
+IDs <-read_csv("ARF_Tip_Label.csv")
+tipLabel <- IDs[,-1]
+
+p <- ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) +
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = -.1, nudge_y = .1, hjust = -.05, size = 1.5)
+p
+
+(p2 <- p %<+% tipLabel + 
+  geom_tippoint(aes(fill=factor(Species)), 
+                size=3.5, shape=21) + geom_tiplab( size=3, hjust=-.1, align = T) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species"))
+  )
+# ggsave("figures/aligned_tips_ARF_colored.pdf", width = 17, height = 17)
+
+(p2 <- p %<+% tipLabel + 
+  geom_tippoint(aes(fill=factor(Species)), 
+                size=3.5, shape=21) + geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species"))
+  )
+
+tipLabel <- tipLabel %>% 
+   dplyr::mutate(tip_color = ifelse(str_detect(name, "At", negate = TRUE), "TO_not", name))
+
+tipLabel2 <- tipLabel %>% 
+   mutate(tip_color = ifelse(str_detect(tip_color, "At", negate = FALSE), "TO_color", tip_color))
+
+
+ p %<+% tipLabel2 + 
+  geom_tiplab(aes(color = factor(tip_color)), size=3, hjust=-.15) + 
+   scale_color_manual(values = c("red", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=4.2, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+#without tips aligned
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.15, fontface=2) + #subset tree in order to get classified (TIR1/ARF) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.15) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+# add node number so we can label the classes within arfs
+ggtree(tree, layout="circular",  color = "darkgrey", 
+       branch.length='prob', ladderize = TRUE) + geom_tiplab(align = T)+
+  geom_text(aes(label=node), size=2, hjust=-.3, color="red", fontface=2) + 
+  scale_x_continuous(expand = c(0, 1.2)) + 
+  geom_nodelab(mapping = aes(label=round(
+   as.numeric(prob), digits = 2), fontface=2), 
+    nudge_x = -.1, nudge_y = .1, hjust = -.05, size = 1.5)
+
+# Tree with aligned tips   
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T) + #subset tree in order to get classified (TIR1/ARF) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+# Now I will also add the ARFs class
+p %<+% tipLabel2 + 
+  geom_tiplab(aes(subset=tip_color == "TO_color"), size=3, hjust=-.01, fontface=2, align = T) + #subset tree in order to get classified (TIR1/ARF) tips in bold
+  geom_tiplab(aes(subset=tip_color == "TO_not"), colour='black', size=3, hjust=-.01, align = T) +
+  geom_point2(aes(subset=(node==185)), shape=1, size=9) +
+  geom_point2(aes(subset=(node==239)), shape=5, size=9) +
+   scale_color_manual(values = c("goldenrod4", "#000000"), guide='none') + 
+  geom_tippoint(aes(fill=factor(Species)), 
+               size=3, shape=21) + #geom_tiplab( size=3, hjust=-.15) + 
+  scale_fill_manual(values = c('#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442')) + #COLORS FROM GGTHEMES COLORBLIND PALLETE
+  guides(fill=guide_legend(title="Species")) + theme(legend.position = c(1,0.1)) 
+
+
+ggsave("figures/ARF_Class_colored_tree.pdf", height = 13, width = 15)
+
+```

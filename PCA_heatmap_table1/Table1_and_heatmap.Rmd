@@ -3,9 +3,10 @@ title: "Manuscript table1"
 author: "Deisiany"
 date: "2023-09-19"
 output:
-  word_document: default
+  pdf_document: default
   html_document: default
-editor_options: 
+  word_document: default
+editor_options:
   chunk_output_type: console
 ---
 

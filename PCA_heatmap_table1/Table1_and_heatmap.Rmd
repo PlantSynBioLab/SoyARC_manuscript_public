@@ -123,12 +123,14 @@ heatmap_df <- df2 %>%
   unite("heatmap_label", `Gene ID`:Orthology, sep = "|", remove = TRUE)
 
 
-# Genes with an median expression across tissues that are less than 2 TPM, will be excluded from downtream analysis
+# Genes with an median expression across tissues that are less than 2 TPM, will be excluded from downstream analysis
 heatmap_df2 <- heatmap_df %>% 
   mutate(expr_median = round(apply(heatmap_df[,c(4:17)], 1, median), digits = 4)) %>% 
   subset(., expr_median>= 2) %>% dplyr::filter(., Class != "COI1")
 
  # we kept 133 genes for downstream normalization
+    # I will save this as a csv file so we can perform a tau (Tissue specificity index analysis).
+write_csv(heatmap_df2, "Tau_133_genes_with_expression_across_tissues_are_greater_than_2_SoyARCs.csv")
 
 ```
 

@@ -1,0 +1,108 @@
+---
+title: "Tissue specificity index analysis - tau"
+author: "Deisiany"
+date: "2024-01-13"
+output:
+  html_document: default
+  pdf_document: default
+---
+# Load libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+# read in data
+For Tissue specificity index analysis - tau - we will use the 133 genes which had average expression across all tissues equal or greater than 2, and was used in our PCA analysis.
+
+```{r}
+# Load full genes
+data <- read_csv("Tau_133_genes_with_expression_across_tissues_are_greater_than_2_SoyARCs.csv") 
+data <- data %>% select(-c(Class, Clade, expr_median))
+```
+
+# Calculate the maximal component value
+X(^) = Xi/ max(Xi) for 1<=i <=n
+```{r}
+# lets start by assigning our data to df
+max_component_df <- data
+
+for (Xi in 1:nrow(max_component_df)) {
+  max_component_df[Xi, 4:17] <- max_component_df[Xi, 4:17] / max(max_component_df[Xi, 4:17], na.rm = TRUE)
+}
+
+max_component_df
+
+# Calculate Tau (Tissue Specificity Index) for each gene
+tau_df <- max_component_df
+
+tau_df$tau <- apply(tau_df[, 4:17], 1, #one here indicates the function will be applied to each row
+                    function(row) sum(1 - row) / 13)
+
+tau_df$tau <- numeric(nrow(tau_df))  # Create an empty column
+
+for (i in 1:nrow(tau_df)) {
+  tau_df$tau[i] <- sum(1 - tau_df[i, 4:17]) / 13
+}
+
+
+```
+
+```{r}
+(tau_df_values <- tau_df %>% select(`Transcript ID`, heatmap_label, tau))
+
+#write_csv(tau_df_values, "tau_df_values.csv")
+```
+
+# tau values greater than .80 are a cut off utilized in the literature to denote tissues specificity.
+
+```{r}
+tau_greater_80 <- tau_df_values[tau_df_values$tau >= 0.80, ]
+
+#write_csv(tau_greater_80, "tau_greater_80.csv")
+```
+
+Here https://rdrr.io/github/roonysgalbi/tispec/f/vignettes/UserGuide.Rmd we can access some useful information about the tau measurement. And these papers also mention these same analysis: https://academic.oup.com/bioinformatics/article/21/5/650/220059#394030419 
+https://academic.oup.com/bib/article/18/2/205/2562739?login=true 
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7791837/#CR75 
+
+
+
+# repeat analysis removing tissues that were not used in our final analysis
+Roots, callus, Inflorescence and so on, were not taken into account in our final analysis. Thus, lets repeat this without this tissues.
+
+```{r}
+# lets start by assigning our data to df
+max_component_df_aerial <- data %>% 
+  select(`Transcript ID`, heatmap_label, SAM6D, SAM17D, SAM38D, AM, Cotyledon, Leaf, Hypocotyl)
+
+for (Xi in 1:nrow(max_component_df_aerial)) {
+  max_component_df_aerial[Xi, 3:9] <- max_component_df_aerial[Xi, 3:9] / max(max_component_df_aerial[Xi, 3:9], na.rm = TRUE)
+}
+
+max_component_df_aerial
+
+# Calculate Tau (Tissue Specificity Index) for each gene
+tau_df_aerial <- max_component_df_aerial
+
+tau_df_aerial$tau <- apply(tau_df_aerial[, 3:9], 1, #one here indicates the function will be applied to each row
+                    function(row) sum(1 - row) / 6)
+
+tau_df_aerial$tau <- numeric(nrow(tau_df_aerial))  # Create an empty column
+
+for (i in 1:nrow(tau_df_aerial)) {
+  tau_df_aerial$tau[i] <- sum(1 - tau_df_aerial[i, 3:9]) / 6
+}
+
+#write_csv(tau_df_aerial, "tau_df_values_aerial_tissues.csv")
+
+tau_df_aerial_values <- tau_df_aerial %>% select(`Transcript ID`, heatmap_label, tau)
+
+# Now lets select values greater than 80 again
+tau_aerial_greater_80 <- 
+  tau_df_aerial_values[tau_df_aerial_values$tau >= 0.80, ]
+
+```
+
+
+

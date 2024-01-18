@@ -90,7 +90,11 @@ df2 <-
 
 
 df2 <- df2 %>% rename(Family = Family.y, `Gene ID` = ensembl_gene_id) %>% drop_na()
+```
 
+# Table 1
+
+```{r}
 # save Table 1 for manuscript
 df2 %>% select(`Gene ID`, Orthology, `Transcript ID`, Class, Clade, Family) %>% arrange(Family, Clade, Class, Orthology) %>% write_csv("Table1.csv")
 
@@ -130,8 +134,21 @@ heatmap_df2 <- heatmap_df %>%
 
  # we kept 133 genes for downstream normalization
     # I will save this as a csv file so we can perform a tau (Tissue specificity index analysis).
-write_csv(heatmap_df2, "Tau_133_genes_with_expression_across_tissues_are_greater_than_2_SoyARCs.csv")
+#write_csv(heatmap_df2, "Tau_133_genes_with_expression_across_tissues_are_greater_than_2_SoyARCs.csv")
 
+```
+
+# table 2 with tau values for the 133 genes.
+```{r}
+heatmap_df2
+
+#read tau analysis in so we can incorporate later into our PCA analysis
+tau_df <- read_csv("tau_df_contains_maximal_component_values.csv")
+
+# Write tau as table 2 for sharing in supplemental material
+tau_df %>% select(-c(Family, `Transcript ID`)) %>% 
+  rename("GeneID & Orthology" = heatmap_label)# %>% 
+  # write_csv(., "Table2_tau_and_maximal_component_value.csv")
 ```
 
 
@@ -221,7 +238,7 @@ summary(pca)
 
 factoextra::fviz_eig(pca, main = "Principal component variances of the 14 tissues")
 
-ggsave("20230927_PCscreePlot_allTissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20230927_PCscreePlot_allTissues.png", dpi = 1000, width = 10, height = 8)
 
 ```
 
@@ -241,10 +258,10 @@ comb_pca_df <- cbind(pca_data, pca$x[, 1:4])
 ### PC1 and PC2 outside ellipse labels for the 14 tissues
 ```{r}
 PC1_2all <- ggbiplot::ggbiplot(pca, obs.scale = 1, var.scale = .5, 
-                             varname.adjust = 3,
+                             varname.adjust = 3, alpha = .1,
                             groups = Family, var.axes = F, varname.size = 2, 
-                  ellipse = TRUE,  circle = FALSE, ellipse.prob = .70)
-    
+                  ellipse = TRUE,  circle = FALSE, ellipse.prob = .70) 
+
 
 # Extract components so we can select out 
 PC1_2all$data
@@ -315,15 +332,53 @@ PC1_2all +
   labs(color = "Class") + 
   theme_bw()
 
-ggsave("20230927_PC1_2_allTissues.png", dpi = 1000, width = 10, height = 8)
-ggsave("20230927_PC1_2_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+# ggsave("20230927_PC1_2_allTissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20230927_PC1_2_allTissues.pdf", dpi = 1000, width = 10, height = 8)
 
 ```
+
+*Lets now repeat with the tau values*
+```{r}
+# combine data frames expr_logic with tau values
+expr_logic2 <- cbind(expr_logic, tau_df$tau)
+
+# Define the intervals for expr_logic2$tau
+expr_logic2$tau_interval <- cut(expr_logic2$tau, 
+                                breaks = c(-Inf, 0.5, 0.8, Inf), 
+                                labels = c("< 0.5", "0.5 - 0.79", "> 0.8"))
+
+PC1_2all + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8.75), yend=(PC2*8.75)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC1*8.75), #add the tissue names to it manually
+             y=(PCA_loadings$PC2*8.75), 
+             label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw() +
+  geom_point(data = expr_logic2 %>% as_tibble(rownames = "name"), 
+                                 aes(PC1, PC2, alpha = tau_interval, color = Family), size=2.5) +
+  ggrepel::geom_text_repel(data = expr_logic2 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC1, PC2, label=sub(".*\\|", "", heatmap_label), 
+                              alpha = tau_interval), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+  
+  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  labs(color = "Class", shape = "tau", alpha ="tau") + 
+  theme_bw()
+
+# ggsave("20240117_PC1_2_allTissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20240117_PC1_2_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+```
+
 
 ### PC2 and PC3 outside ellipse labels for the 14 tissues
 ```{r}
 PC2_3all <- ggbiplot::ggbiplot(pca, obs.scale = 1, var.scale = .5, choices = c(2, 3),
-                             varname.adjust = 3,
+                             varname.adjust = 3, alpha = .1,
                             groups = Family, var.axes = F, varname.size = 2, 
                   ellipse = TRUE,  circle = FALSE, ellipse.prob = .70)
     
@@ -396,13 +451,55 @@ PC2_3all +
   labs(color = "Class") + 
   theme_bw()
   
-ggsave("20230927_PC2_3_allTissues.png", dpi = 1000, width = 10, height = 8)
-ggsave("20230927_PC2_3_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+# ggsave("20230927_PC2_3_allTissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20230927_PC2_3_allTissues.pdf", dpi = 1000, width = 10, height = 8)
 ```
+
+*Lets now repeat with the tau values*
+```{r}
+# combine data frames expr_logic with tau values
+expr_logic_PC2_3 <- cbind(expr_logic2, tau_df$tau)
+
+# Define the intervals for expr_logic2$tau
+expr_logic_PC2_3$tau_interval <- cut(expr_logic_PC2_3$tau, 
+                                breaks = c(-Inf, 0.5, 0.8, Inf), 
+                                labels = c("< 0.5", "0.5 - 0.79", "> 0.8"))
+
+
+
+PC2_3all + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*8.75), yend=(PC3*8.75)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC2*8.75), #add the tissue names to it manually
+             y=(PCA_loadings$PC3*8.75), 
+             label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw() +
+  geom_point(data = expr_logic_PC2_3 %>% as_tibble(rownames = "name"), 
+                                 aes(PC2, PC3, alpha = tau_interval, color = Family), 
+             size=3) +
+  ggrepel::geom_text_repel(data = expr_logic_PC2_3 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC2, PC3, label=sub(".*\\|", "", heatmap_label), 
+                              alpha = tau_interval), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+  
+  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  labs(color = "Class", shape = "tau", alpha ="tau") + 
+  theme_bw()
+
+# ggsave("20240117_PC2_3_allTissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20240117_PC2_3_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+```
+
+
 ## PC3 and PC4 for all 14 tissues
 ```{r}
 PC3_4all <- ggbiplot::ggbiplot(pca, obs.scale = 1, var.scale = .5, choices = c(3,4), 
-                             varname.adjust = 3,
+                             varname.adjust = 3, alpha = .1,
                             groups = Family, var.axes = F, varname.size = 2, 
                   ellipse = TRUE,  circle = FALSE, ellipse.prob = .70)
 
@@ -475,13 +572,53 @@ PC3_4all +
    labs(color = "Class") + 
   theme_bw()
 
-ggsave("20230927_PC3_4_allTissues.png", dpi = 1000, width = 10, height = 8)
-ggsave("20230927_PC3_4_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+#ggsave("20230927_PC3_4_allTissues.png", dpi = 1000, width = 10, height = 8)
+#ggsave("20230927_PC3_4_allTissues.pdf", dpi = 1000, width = 10, height = 8)
 
 ```
 
-# PCA with only tissues of interest
+*Lets now repeat with the tau values*
+```{r}
+# combine data frames expr_logic with tau values
+expr_logic_PC3_4 <- cbind(expr_logic3, tau_df$tau)
 
+# Define the intervals for expr_logic2$tau
+expr_logic_PC3_4$tau_interval <- cut(expr_logic_PC3_4$tau, 
+                                breaks = c(-Inf, 0.5, 0.8, Inf), 
+                                labels = c("< 0.5", "0.5 - 0.79", "> 0.8"))
+
+
+
+PC3_4all + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC3*8.75), yend=(PC4*8.75)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC3*8.75), #add the tissue names to it manually
+             y=(PCA_loadings$PC4*8.75), 
+             label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw() +
+  geom_point(data = expr_logic_PC3_4 %>% as_tibble(rownames = "name"), 
+                                 aes(PC3, PC4, alpha = tau_interval, color = Family), 
+             size=3) +
+  ggrepel::geom_text_repel(data = expr_logic_PC3_4 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC3, PC4, label=sub(".*\\|", "", heatmap_label), 
+                              alpha = tau_interval), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+  
+  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  labs(color = "Class", shape = "tau", alpha ="tau") + 
+  theme_bw()
+
+#ggsave("20240117_PC3_4_allTissues.png", dpi = 1000, width = 10, height = 8)
+#ggsave("20240117_PC3_4_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+```
+
+
+# PCA with only tissues of interest
 
 ```{r}
 pca2 <- prcomp(pca_data[, -c(1:5, 7:10, 16, 18:19)], 
@@ -490,7 +627,7 @@ summary(pca2)
 
 
 factoextra::fviz_eig(pca2, main = "Principal components variance for the 7 tissues")
-ggsave("20230927_PCscreePlot_7Tissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20230927_PCscreePlot_7Tissues.png", dpi = 1000, width = 10, height = 8)
 
 ```
 
@@ -510,60 +647,60 @@ PCA_loadings2 <- data.frame(Variables=rownames(pca2$rotation), pca2$rotation)
 # Plot
 library(ggrepel)
 PC1_2_7tissues <- ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(1, 2),
-                             varname.adjust = 3,
+                             varname.adjust = 3,alpha = 0.1,
                             groups = Family, var.axes = F, varname.size = 2, 
                   ellipse = TRUE,  circle = FALSE, ellipse.prob = .70) 
 
 ```
  
-## withdraw lables outside ellipses to label outliers
+## withdraw lables outside ellipses to label outliers (data points located outside the 70% ellipse interval)
 ```{r}
 # Extract components so we can select out 
 PC1_2_7tissues$data
-build <- ggplot_build(PC1_2_7tissues)$data
-points <- build[[1]]
+build_PC1_2_7tissues <- ggplot_build(PC1_2_7tissues)$data
+points_PC1_2_7tissues <- build_PC1_2_7tissues[[1]]
 
 # co-ordinates of the ellipses
-ell_points <- car::dataEllipse(joint_pca_df$PC1, 
+ell_points_PC1_2_7tissues <- car::dataEllipse(joint_pca_df$PC1, 
                                joint_pca_df$PC2, 
                                as.factor(joint_pca_df$Family), levels=c(.7, .9))
 # add geom_point with ellipses point 
 
-ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+ell_ARF_PC1_2_7tissues <- as.data.frame(ell_points_PC1_2_7tissues$ARF$`0.7`)
 
-ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+ell_IAA_PC1_2_7tissues <- as.data.frame(ell_points_PC1_2_7tissues$IAA$`0.7`)
 
-ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+ell_TIR_PC1_2_7tissues <- as.data.frame(ell_points_PC1_2_7tissues$`AFB/TIR1`$`0.7`)
 
 # Find which points are outside (!) the ellipse, and add this to the data
 library(sp)
-dat_TIR <- data.frame(
+dat_TIR_PC1_2_7tissues <- data.frame(
   points[2:3], 
-  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR_PC1_2_7tissues$x, ell_TIR_PC1_2_7tissues$y))
 )
 
-dat_IAA <- data.frame(
+dat_IAA_PC1_2_7tissues <- data.frame(
   points[2:3], 
-  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA_PC1_2_7tissues$x, ell_IAA_PC1_2_7tissues$y)) 
 ) 
 
-dat_ARF <- data.frame(
+dat_ARF_PC1_2_7tissues <- data.frame(
   points[2:3], 
-  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF_PC1_2_7tissues$x, ell_ARF_PC1_2_7tissues$y))
 )
 # as.logical(point..) equals to TRUE indicated points are inside ellipses
 
 # Combining data points for labeling
 #Combine data points coordinates with PCs and expression data containing gene names will help us to have only genes of interest names, or at list the majority of them.
-transcript_expr_logical <- cbind(joint_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+transcript_expr_logical_PC1_2_7tissues <- cbind(joint_pca_df, dat_TIR_PC1_2_7tissues, dat_IAA_PC1_2_7tissues, dat_ARF_PC1_2_7tissues) %>% select(., - c(x, y))
 
 
-expr_logical <- transcript_expr_logical %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+expr_logical_PC1_2_7tissues <- transcript_expr_logical_PC1_2_7tissues %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
                                               Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
                                               Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
   mutate(in_ell = coalesce(in_ell, "FALSE"))
 
-expr_logical[which(expr_logical$in_ell == FALSE),]
+expr_logical_PC1_2_7tissues[which(expr_logical_PC1_2_7tissues$in_ell == FALSE),]
 
 ```
 
@@ -571,7 +708,7 @@ expr_logical[which(expr_logical$in_ell == FALSE),]
 ```{r}
 
 ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(1, 2),
-                             varname.adjust = 3,
+                             varname.adjust = 3, 
                             groups = Family, var.axes = F, varname.size = 2, 
                   ellipse = TRUE,  circle = FALSE, ellipse.prob = .70) + 
     geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
@@ -583,7 +720,7 @@ ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(1, 2),
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
    scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
-  ggrepel::geom_text_repel(data = expr_logical %>% 
+  ggrepel::geom_text_repel(data = expr_logical_PC1_2_7tissues %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
                           aes(PC1, PC2, label=sub(".*\\|", "", heatmap_label)), 
@@ -592,70 +729,112 @@ ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(1, 2),
    labs(color = "Class") + 
   theme_bw()
 
-ggsave("20230927_PC1_2_7Tissues.png", dpi = 1000, width = 10, height = 8)
-ggsave("20230927_PC1_2_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+#ggsave("20230927_PC1_2_7Tissues.png", dpi = 1000, width = 10, height = 8)
+#ggsave("20230927_PC1_2_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
 ```
+
+*Lets now repeat with the tau values for 7 tissues kept*
+```{r}
+# combine data frames expr_logic with tau values
+expr_logic_PC1_2_7tissues <- cbind(expr_logical_PC1_2_7tissues, tau_df$tau)
+
+# Define the intervals for expr_logic2$tau
+expr_logic_PC1_2_7tissues$tau_interval <- cut(expr_logic_PC1_2_7tissues$tau, 
+                                breaks = c(-Inf, 0.5, 0.8, Inf), 
+                                labels = c("< 0.5", "0.5 - 0.79", "> 0.8"))
+
+PC1_2_7tissues + 
+    geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8.75), yend=(PC2*8.75)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings2$PC1*8.75), #add the tissue names to it manually
+             y=(PCA_loadings2$PC2*8.75), 
+             label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1)) + 
+  
+  geom_point(data = expr_logic_PC1_2_7tissues %>% as_tibble(rownames = "name"), 
+                                 aes(PC1, PC2, alpha = tau_interval, color = Family), 
+             size=3) +
+  ggrepel::geom_text_repel(data = expr_logic_PC1_2_7tissues %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC1, PC2, label=sub(".*\\|", "", heatmap_label),
+                              alpha=tau_interval), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) + 
+  
+   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+   labs(color = "Class") + 
+  labs(color = "Class", alpha ="tau") + 
+  ylim(-7.5, 3) +
+  theme_bw()
+
+#ggsave("20240117_PC1_2_7Tissues.png", dpi = 1000, width = 10, height = 8)
+#ggsave("20240117_PC1_2_7Tissues.pdf", dpi = 1000, width = 10, height = 8)  
+
+```
+
 
 ## PC2 and PC3 outside ellipse labels
 ```{r}
-PC2_3tissues <- ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(2, 3),
-                             varname.adjust = 3,
+PC2_3_7tissues <- ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(2, 3),
+                             varname.adjust = 3, alpha = .1,
                             groups = Family, var.axes = F, varname.size = 2, 
                   ellipse = TRUE,  circle = FALSE, ellipse.prob = .70) 
     
 
 # Extract components so we can select out 
-PC2_3tissues$data
-build <- ggplot_build(PC2_3tissues)$data
-points <- build[[1]]
+PC2_3_7tissues$data
+build_PC2_3_7tissues <- ggplot_build(PC2_3_7tissues)$data
+points_PC2_3_7tissues <- build_PC2_3_7tissues[[1]]
 
 # co-ordinates of the ellipses
-ell_points <- car::dataEllipse(joint_pca_df$PC2, 
+ell_points_PC2_3_7tissues <- car::dataEllipse(joint_pca_df$PC2, 
                                joint_pca_df$PC3, 
                                as.factor(joint_pca_df$Family), levels=c(.7, .9))
 # add geom_point with ellipses point 
 
-ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+ell_ARF_PC2_3_7tissues <- as.data.frame(ell_points_PC2_3_7tissues$ARF$`0.7`)
 
-ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+ell_IAA_PC2_3_7tissues <- as.data.frame(ell_points_PC2_3_7tissues$IAA$`0.7`)
 
-ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+ell_TIR_PC2_3_7tissues <- as.data.frame(ell_points_PC2_3_7tissues$`AFB/TIR1`$`0.7`)
 
 # Find which points are outside (!) the ellipse, and add this to the data
-library(sp)
-dat_TIR <- data.frame(
-  points[2:3], 
-  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+
+dat_TIR_PC2_3_7tissues <- data.frame(
+  points_PC2_3_7tissues[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points_PC2_3_7tissues$x, points_PC2_3_7tissues$y, ell_TIR_PC2_3_7tissues$x, ell_TIR_PC2_3_7tissues$y))
 )
 
-dat_IAA <- data.frame(
-  points[2:3], 
-  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+dat_IAA_PC2_3_7tissues <- data.frame(
+  points_PC2_3_7tissues[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points_PC2_3_7tissues$x, points_PC2_3_7tissues$y, ell_IAA_PC2_3_7tissues$x, ell_IAA_PC2_3_7tissues$y)) 
 ) 
 
-dat_ARF <- data.frame(
-  points[2:3], 
-  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+dat_ARF_PC2_3_7tissues <- data.frame(
+  points_PC2_3_7tissues[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points_PC2_3_7tissues$x, points_PC2_3_7tissues$y, ell_ARF_PC2_3_7tissues$x, ell_ARF_PC2_3_7tissues$y))
 )
 # as.logical(point..) equals to TRUE indicated points are inside ellipses
 
 # Combining data points for labeling
-transcript_expr_logical2 <- cbind(joint_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+transcript_expr_log_PC2_3_7tissues <- cbind(joint_pca_df, dat_TIR_PC2_3_7tissues, dat_IAA_PC2_3_7tissues, dat_ARF_PC2_3_7tissues) %>% select(., - c(x, y))
 
 
-expr_logical2 <- transcript_expr_logical2 %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+expr_logical_PC2_3_7tissues <- transcript_expr_log_PC2_3_7tissues %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
                                               Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
                                               Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
   mutate(in_ell = coalesce(in_ell, "FALSE"))
 
-expr_logical2[which(expr_logical2$in_ell == FALSE),]
+expr_logical_PC2_3_7tissues[which(expr_logical_PC2_3_7tissues$in_ell == FALSE),]
 
 
 ```
 
 ```{r}
 
-PC2_3tissues + 
+PC2_3_7tissues + 
   geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
                                            xend=(PC2*7), yend=(PC3*7)), 
                  arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
@@ -665,7 +844,7 @@ PC2_3tissues +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
    scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
-  ggrepel::geom_text_repel(data = expr_logical2 %>% 
+  ggrepel::geom_text_repel(data = expr_logical_PC2_3_7tissues %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
                           aes(PC2, PC3, label=sub(".*\\|", "", heatmap_label)), 
@@ -674,72 +853,114 @@ PC2_3tissues +
    labs(color = "Class") + 
   theme_bw()
 
-ggsave("20230927_PC2_3_7Tissues.png", dpi = 1000, width = 10, height = 8)
-ggsave("20230927_PC2_3_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+# ggsave("20230927_PC2_3_7Tissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20230927_PC2_3_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
 
 ```
 
 
 
+*Lets now repeat with the tau values for 7 tissues kept*
+```{r}
+# combine data frames expr_logic with tau values
+expr_logic_PC2_3_7tissues <- cbind(expr_logical_PC2_3_7tissues, tau_df$tau)
+
+# Define the intervals for expr_logic2$tau
+expr_logic_PC2_3_7tissues$tau_interval <- cut(expr_logic_PC2_3_7tissues$tau, 
+                                breaks = c(-Inf, 0.5, 0.8, Inf), 
+                                labels = c("< 0.5", "0.5 - 0.79", "> 0.8"))
+
+PC2_3_7tissues + 
+    geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*8.75), yend=(PC3*8.75)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings2$PC2*8.75), #add the tissue names to it manually
+             y=(PCA_loadings2$PC3*8.75), 
+             label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1)) + 
+  
+  geom_point(data = expr_logic_PC2_3_7tissues %>% as_tibble(rownames = "name"), 
+                                 aes(PC2, PC3, alpha = tau_interval, color = Family), 
+             size=3) +
+  ggrepel::geom_text_repel(data = expr_logic_PC2_3_7tissues %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC2, PC3, label=sub(".*\\|", "", heatmap_label),
+                              alpha=tau_interval), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) + 
+  
+   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+   labs(color = "Class") + 
+  labs(color = "Class", alpha ="tau") + 
+  ylim(-7.5, 3) +
+  theme_bw()
+
+#ggsave("20240117_PC2_3_7Tissues.png", dpi = 1000, width = 10, height = 8)
+#ggsave("20240117_PC2_3_7Tissues.pdf", dpi = 1000, width = 10, height = 8)  
+
+```
+
+
 ## PC3 and PC4 outside ellipse labels
 ```{r}
-PC3_4tissues <- ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(3,4), 
-                             varname.adjust = 3,
+PC3_4_7tissues <- ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(3,4), 
+                             varname.adjust = 3, alpha = .1,
                             groups = Family, var.axes = F, varname.size = 2, 
                   ellipse = TRUE,  circle = FALSE, ellipse.prob = .70)
     
 
 # Extract components so we can select out 
-PC3_4tissues$data
-build <- ggplot_build(PC3_4tissues)$data
-points <- build[[1]]
+PC3_4_7tissues$data
+build_PC3_4_7tissues <- ggplot_build(PC3_4_7tissues)$data
+points_PC3_4_7tissues <- build_PC3_4_7tissues[[1]]
 
 # co-ordinates of the ellipses
-ell_points <- car::dataEllipse(joint_pca_df$PC3, 
+ell_points_PC3_4_7tissues <- car::dataEllipse(joint_pca_df$PC3, 
                                joint_pca_df$PC4, 
                                as.factor(joint_pca_df$Family), levels=c(.7, .9))
 # add geom_point with ellipses point 
 
-ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+ell_ARF_PC3_4_7tissues <- as.data.frame(ell_points_PC3_4_7tissues$ARF$`0.7`)
 
-ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+ell_IAA_PC3_4_7tissues <- as.data.frame(ell_points_PC3_4_7tissues$IAA$`0.7`)
 
-ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+ell_TIR_PC3_4_7tissues <- as.data.frame(ell_points_PC3_4_7tissues$`AFB/TIR1`$`0.7`)
 
 # Find which points are outside (!) the ellipse, and add this to the data
 library(sp)
-dat_TIR <- data.frame(
-  points[2:3], 
-  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+dat_TIR_PC3_4_7tissues <- data.frame(
+  points_PC3_4_7tissues[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points_PC3_4_7tissues$x, points_PC3_4_7tissues$y, ell_TIR_PC3_4_7tissues$x, ell_TIR_PC3_4_7tissues$y))
 )
 
-dat_IAA <- data.frame(
-  points[2:3], 
-  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+dat_IAA_PC3_4_7tissues <- data.frame(
+  points_PC3_4_7tissues[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points_PC3_4_7tissues$x, points_PC3_4_7tissues$y, ell_IAA_PC3_4_7tissues$x, ell_IAA_PC3_4_7tissues$y)) 
 ) 
 
-dat_ARF <- data.frame(
-  points[2:3], 
-  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+dat_ARF_PC3_4_7tissues <- data.frame(
+  points_PC3_4_7tissues[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points_PC3_4_7tissues$x, points_PC3_4_7tissues$y, ell_ARF_PC3_4_7tissues$x, ell_ARF_PC3_4_7tissues$y))
 )
 # as.logical(point..) equals to TRUE indicated points are inside ellipses
 
 # Combining data points for labeling
-transcript_expr_logical3 <- cbind(joint_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+transcript_expr_logical_PC3_4_7tissues <- cbind(joint_pca_df, dat_TIR_PC3_4_7tissues, dat_IAA_PC3_4_7tissues, dat_ARF_PC3_4_7tissues) %>% select(., - c(x, y))
 
 
-expr_logical3 <- transcript_expr_logical3 %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+expr_logical_PC3_4_7tissues <- transcript_expr_logical_PC3_4_7tissues %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
                                               Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
                                               Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
   mutate(in_ell = coalesce(in_ell, "FALSE"))
 
-expr_logical3[which(expr_logical3$in_ell == FALSE),]
+expr_logical_PC3_4_7tissues[which(expr_logical_PC3_4_7tissues$in_ell == FALSE),]
 
 
 ```
 
 ```{r}
-PC3_4tissues + 
+PC3_4_7tissues + 
     geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
                                            xend=(PC3*8), yend=(PC4*8)), 
                  arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
@@ -749,7 +970,7 @@ PC3_4tissues +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
    scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
-  ggrepel::geom_text_repel(data = expr_logical3 %>% 
+  ggrepel::geom_text_repel(data = expr_logical_PC3_4_7tissues %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
                           aes(PC3, PC4, label=sub(".*\\|", "", heatmap_label)), 
@@ -759,10 +980,66 @@ PC3_4tissues +
   theme_bw()
 
 
-ggsave("20230927_PC3_4_7Tissues.png", dpi = 1000, width = 10, height = 8)
-ggsave("20230927_PC3_4_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+#ggsave("20230927_PC3_4_7Tissues.png", dpi = 1000, width = 10, height = 8)
+#ggsave("20230927_PC3_4_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+```
+*Repeat the same to add tau measurement*
+```{r}
+# combine data frames expr_logic with tau values
+expr_logical_PC3_4_7tissues <- cbind(expr_logical_PC3_4_7tissues, tau_df$tau)
+
+# Define the intervals for expr_logic2$tau
+expr_logical_PC3_4_7tissues$tau_interval <- cut(expr_logical_PC3_4_7tissues$tau, 
+                                breaks = c(-Inf, 0.5, 0.8, Inf), 
+                                labels = c("< 0.5", "0.5 - 0.79", "> 0.8"))
+
+PC3_4_7tissues + 
+    geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC3*8), yend=(PC4*8)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings2$PC3*8.75), #add the tissue names to it manually
+             y=(PCA_loadings2$PC4*8.75), 
+             label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw()+
+  
+  ggrepel::geom_text_repel(data = expr_logical_PC3_4_7tissues %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(in_ell == FALSE)), 
+                          aes(PC3, PC4, label=sub(".*\\|", "", heatmap_label),
+                              alpha = tau_interval), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+   labs(color = "Class") + 
+ 
+   geom_point(data = expr_logical_PC3_4_7tissues %>% as_tibble(rownames = "name"), 
+                                 aes(PC3, PC4, alpha = tau_interval, color = Family), 
+             size=3) +
+   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+   labs(color = "Class") + 
+  labs(color = "Class", alpha ="tau") + 
+  theme_bw()
+
+#ggsave("20240117_PC3_4_7Tissues.png", dpi = 1000, width = 10, height = 8)
+#ggsave("20240117_PC3_4_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
 ```
 
 # Principal component comparisons.
 
 We observe here the differences between our principal component analysis with all 14 tissues from databases, and with only the 7 tissues that are part of aerial architecture. It is visible that our principal component analysis is minimally affected by the exclusion of tissues herein analysed, hence we are confident to display only the aerial tissues we are interested in. We also observe that root, hypocotyl, nodule, and open flower fall along the same direction, implying that these tissues are correlated. As we move to principal components that accounts for smaller amounts of variation, we notice  an improvement in the discrimination of the correlation between root, nodule and hypocotyl tissues. On the other hand  root tips, and open flower correlation to hypocotyl shifts more when looking at PC3 and PC4, with a very small discrimination between these tissues. We can speculate that this correlation could be due to these tissues being at approximate similar developmental stages, and therefore exhibit similar patterns of gene expression as they respond to common developmental cues. It also shows the redundancy of auxin response genes as they have overlap in functional roles. Further investigation of these genes are important to gain more insightful information of which genes are important in growth and development of these tissues, and if different pair of auxin regulatory genes are important during this process.  
+
+
+
+
+# add tau correlation to Geom distance from origin
+
+- Tau does provide some additional information
+- highlight some original candidates with high | low tau identified in PCA
+- family wise tau distribution: are ARFs or IAAs more tissue specific?
+
+- Discussion: 
+    - other means of calculating tau, or better suited datasets
+    - machine learning model of candidate genes
+
+
+

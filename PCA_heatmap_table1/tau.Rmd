@@ -36,16 +36,13 @@ max_component_df
 # Calculate Tau (Tissue Specificity Index) for each gene
 tau_df <- max_component_df
 
-tau_df$tau <- apply(tau_df[, 4:17], 1, #one here indicates the function will be applied to each row
-                    function(row) sum(1 - row) / 13)
-
 tau_df$tau <- numeric(nrow(tau_df))  # Create an empty column
 
 for (i in 1:nrow(tau_df)) {
   tau_df$tau[i] <- sum(1 - tau_df[i, 4:17]) / 13
 }
 
-
+# write_csv(tau_df, "tau_df_contains_maximal_component_values.csv")
 ```
 
 ```{r}
@@ -84,9 +81,6 @@ max_component_df_aerial
 
 # Calculate Tau (Tissue Specificity Index) for each gene
 tau_df_aerial <- max_component_df_aerial
-
-tau_df_aerial$tau <- apply(tau_df_aerial[, 3:9], 1, #one here indicates the function will be applied to each row
-                    function(row) sum(1 - row) / 6)
 
 tau_df_aerial$tau <- numeric(nrow(tau_df_aerial))  # Create an empty column
 

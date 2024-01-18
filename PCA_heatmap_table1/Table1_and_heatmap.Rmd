@@ -36,7 +36,7 @@ IAA2 <- read.csv("../final_trees/IAA_input/LABELS2_20230917.csv") %>% .[30:90, ]
 IAA2 <- IAA2 %>% select(tair_locus, ensembl_gene_id, Class)
 
 IAA_ortho <- merge(IAA, IAA2, by = "tair_locus", all = TRUE)
-IAA_ortho <- IAA_ortho %>% rename(`Gene ID` = ensembl_gene_id.x,
+IAA_ortho <- IAA_ortho %>% dplyr::rename(`Gene ID` = `ensembl_gene_id.x`,
                      `Transcript ID` = tair_locus,
                      Orthology = ortholog_name,
                      `Class/Clade` = Class) %>% 
@@ -57,7 +57,7 @@ comb_expr_df <- comb_expr_df %>%
 # populate NA's in class in accordance to their ensembl gene ID. if the same ID they belong to the same class
 comb_expr_df2 <- comb_expr_df %>%
   group_by(ensembl_gene_id) %>%
-  mutate(Class = if (all(is.na(Class))) NA else na.omit(Class)) %>%
+  dplyr::mutate(Class = if (all(is.na(Class))) NA else na.omit(Class)) %>%
   ungroup()
 
 
@@ -67,36 +67,39 @@ comb_expr_df2 <- comb_expr_df2 %>% separate(Class, c('Class', 'Clade'),sep = " -
 # Now combine TIR df to get their new clades.
 df <- merge(comb_expr_df2, TIR, by.x = "ensembl_gene_id", by.y = "ensembl_gene_id", all = TRUE)
 
-df <- df %>% mutate(Clade = coalesce(Clade.x, Clade.y))
+df <- df %>% dplyr::mutate(Clade = coalesce(Clade.x, Clade.y))
 
-df <- df %>% select(-c(Clade.x, Clade.y, class, tair_locus, ortholog_name, name.x, name.y)) %>% rename(Orthology = ortholog_number)
+df <- df %>% 
+  dplyr::select(-c(Clade.x, Clade.y, class, tair_locus, ortholog_name, name.x, name.y)) %>% 
+  dplyr::rename(Orthology = ortholog_number)
 
 df <- df %>% 
   group_by(ensembl_gene_id) %>% 
-  mutate(Clade = if(all(is.na(Clade))) NA else na.omit(Clade)) %>% 
+  dplyr::mutate(Clade = if(all(is.na(Clade))) NA else na.omit(Clade)) %>% 
   ungroup()
 
 # I can add clades to ARFs as I have not saved that as csv file when I built trees. 
-df <- df %>% mutate(Clade = ifelse(grepl("ARF", .$Family.y) & grepl("A", .$Class), "II",
+df <- df %>% dplyr::mutate(Clade = ifelse(grepl("ARF", .$Family.y) & grepl("A", .$Class), "II",
                             ifelse(grepl("ARF", .$Family.y) & grepl("B", .$Class), "I",
                                    ifelse(grepl("ARF", .$Family.y) & grepl("C", .$Class), "III", Clade))))
 
 
 
 df2 <-
-  df %>% mutate(Class = ifelse(grepl("Glyma.02G218100", .$ensembl_gene_id), "A", Class),
+  df %>% dplyr::mutate(Class = ifelse(grepl("Glyma.02G218100", .$ensembl_gene_id), "A", Class),
                 Clade =
                   ifelse(grepl("Glyma.02G218100", .$ensembl_gene_id), "I", Clade))
 
 
-df2 <- df2 %>% rename(Family = Family.y, `Gene ID` = ensembl_gene_id) %>% drop_na()
+df2 <- df2 %>% dplyr::rename(Family = Family.y, `Gene ID` = ensembl_gene_id) %>% drop_na()
 ```
 
 # Table 1
 
 ```{r}
 # save Table 1 for manuscript
-df2 %>% select(`Gene ID`, Orthology, `Transcript ID`, Class, Clade, Family) %>% arrange(Family, Clade, Class, Orthology) %>% write_csv("Table1.csv")
+df2 %>% dplyr::select(`Gene ID`, Orthology, `Transcript ID`, Class, Clade, Family) %>% 
+  arrange(Family, Clade, Class, Orthology) #%>% write_csv("Table1.csv")
 
 # write_csv(df2, "20230919_expression_heatmap.csv")
 ```
@@ -228,8 +231,6 @@ In our PCA we are not using the normalized data. That is beacause we are already
 
 ```{r}
 pca_data <- heatmap_df2 %>% relocate(c(Class, Clade), .after = Family) %>% select(-expr_median)
-
-
 
 # for analysis with all tissues 
 pca <- prcomp(pca_data[, -(1:5)], 
@@ -385,49 +386,49 @@ PC2_3all <- ggbiplot::ggbiplot(pca, obs.scale = 1, var.scale = .5, choices = c(2
 
 # Extract components so we can select out 
 PC2_3all$data
-build <- ggplot_build(PC2_3all)$data
-points <- build[[1]]
+build_PC2_3all <- ggplot_build(PC2_3all)$data
+points_PC2_3all <- build_PC2_3all[[1]]
 
 # co-ordinates of the ellipses
-ell_points <- car::dataEllipse(comb_pca_df$PC2, 
+ell_points_PC2_3all <- car::dataEllipse(comb_pca_df$PC2, 
                                comb_pca_df$PC3, 
                                as.factor(comb_pca_df$Family), levels=c(.7, .9))
 # add geom_point with ellipses point 
 
-ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+ell_ARF_PC2_3all <- as.data.frame(ell_points_PC2_3all$ARF$`0.7`)
 
-ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+ell_IAA_PC2_3all <- as.data.frame(ell_points_PC2_3all$IAA$`0.7`)
 
-ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+ell_TIR_PC2_3all <- as.data.frame(ell_points_PC2_3all$`AFB/TIR1`$`0.7`)
 
 # Find which points are outside (!) the ellipse, and add this to the data
 
-dat_TIR <- data.frame(
-  points[2:3], 
-  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+dat_TIR_PC2_3all <- data.frame(
+  points_PC2_3all[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points_PC2_3all$x, points_PC2_3all$y, ell_TIR_PC2_3all$x, ell_TIR_PC2_3all$y))
 )
 
-dat_IAA <- data.frame(
-  points[2:3], 
-  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+dat_IAA_PC2_3all <- data.frame(
+  points_PC2_3all[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points_PC2_3all$x, points_PC2_3all$y, ell_IAA_PC2_3all$x, ell_IAA_PC2_3all$y)) 
 ) 
 
-dat_ARF <- data.frame(
-  points[2:3], 
-  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+dat_ARF_PC2_3all <- data.frame(
+  points_PC2_3all[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points_PC2_3all$x, points_PC2_3all$y, ell_ARF_PC2_3all$x, ell_ARF_PC2_3all$y))
 )
 # as.logical(point..) equals to TRUE indicated points are inside ellipses
 
 # Combining data points for labeling
-transcript_expr_logic2 <- cbind(comb_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+transcript_expr_logic_PC2_3all <- cbind(comb_pca_df, dat_TIR_PC2_3all, dat_IAA_PC2_3all, dat_ARF_PC2_3all) %>% select(., - c(x, y))
 
 
-expr_logic2 <- transcript_expr_logic2 %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+expr_logic_PC2_3all <- transcript_expr_logic_PC2_3all %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
                                               Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
                                               Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
   mutate(in_ell = coalesce(in_ell, "FALSE"))
 
-expr_logic2[which(expr_logic2$in_ell == FALSE),]
+expr_logic_PC2_3all[which(expr_logic_PC2_3all$in_ell == FALSE),]
 
 ```
 
@@ -442,7 +443,7 @@ PC2_3all +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
    scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
-   ggrepel::geom_text_repel(data = expr_logic2 %>% 
+   ggrepel::geom_text_repel(data = expr_logic_PC2_3all %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
                           aes(PC2, PC3, label=sub(".*\\|", "", heatmap_label)), 
@@ -458,7 +459,7 @@ PC2_3all +
 *Lets now repeat with the tau values*
 ```{r}
 # combine data frames expr_logic with tau values
-expr_logic_PC2_3 <- cbind(expr_logic2, tau_df$tau)
+expr_logic_PC2_3 <- cbind(expr_logic_PC2_3all, tau_df$tau)
 
 # Define the intervals for expr_logic2$tau
 expr_logic_PC2_3$tau_interval <- cut(expr_logic_PC2_3$tau, 
@@ -506,49 +507,49 @@ PC3_4all <- ggbiplot::ggbiplot(pca, obs.scale = 1, var.scale = .5, choices = c(3
 
 # Extract components so we can select out 
 PC3_4all$data
-build <- ggplot_build(PC3_4all)$data
-points <- build[[1]]
+build_PC3_4all <- ggplot_build(PC3_4all)$data
+points_PC3_4all <- build_PC3_4all[[1]]
 
 # co-ordinates of the ellipses
-ell_points <- car::dataEllipse(comb_pca_df$PC3, 
+ell_points_PC3_4all <- car::dataEllipse(comb_pca_df$PC3, 
                                comb_pca_df$PC4, 
                                as.factor(comb_pca_df$Family), levels=c(.7, .9))
 # add geom_point with ellipses point 
 
-ell_ARF <- as.data.frame(ell_points$ARF$`0.7`)
+ell_ARF_PC3_4all <- as.data.frame(ell_points_PC3_4all$ARF$`0.7`)
 
-ell_IAA <- as.data.frame(ell_points$IAA$`0.7`)
+ell_IAA_PC3_4all <- as.data.frame(ell_points_PC3_4all$IAA$`0.7`)
 
-ell_TIR <- as.data.frame(ell_points$`AFB/TIR1`$`0.7`)
+ell_TIR_PC3_4all <- as.data.frame(ell_points_PC3_4all$`AFB/TIR1`$`0.7`)
 
 # Find which points are outside (!) the ellipse, and add this to the data
 
-dat_TIR <- data.frame(
-  points[2:3], 
-  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR$x, ell_TIR$y))
+dat_TIR_PC3_4all <- data.frame(
+  points_PC3_4all[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points_PC3_4all$x, points_PC3_4all$y, ell_TIR_PC3_4all$x, ell_TIR_PC3_4all$y))
 )
 
-dat_IAA <- data.frame(
-  points[2:3], 
-  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA$x, ell_IAA$y)) 
+dat_IAA_PC3_4all <- data.frame(
+  points_PC3_4all[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points_PC3_4all$x, points_PC3_4all$y, ell_IAA_PC3_4all$x, ell_IAA_PC3_4all$y)) 
 ) 
 
-dat_ARF <- data.frame(
-  points[2:3], 
-  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF$x, ell_ARF$y))
+dat_ARF_PC3_4all <- data.frame(
+  points_PC3_4all[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points_PC3_4all$x, points_PC3_4all$y, ell_ARF_PC3_4all$x, ell_ARF_PC3_4all$y))
 )
 # as.logical(point..) equals to TRUE indicated points are inside ellipses
 
 # Combining data points for labeling
-transcript_expr_logic3 <- cbind(comb_pca_df, dat_TIR, dat_IAA, dat_ARF) %>% select(., - c(x, y))
+transcript_expr_logic_PC3_4all <- cbind(comb_pca_df, dat_TIR_PC3_4all, dat_IAA_PC3_4all, dat_ARF_PC3_4all) %>% select(., - c(x, y))
 
 
-expr_logic3 <- transcript_expr_logic3 %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
+expr_logic_PC3_4all <- transcript_expr_logic_PC3_4all %>% mutate(., in_ell = case_when(Family=="ARF" & `in.ell_ARF` == TRUE ~ "TRUE",
                                               Family=="IAA" & `in.ell_IAA` == TRUE ~ "TRUE",
                                               Family=="AFB/TIR1" & `in.ell_TIR` == TRUE ~ "TRUE")) %>%
   mutate(in_ell = coalesce(in_ell, "FALSE"))
 
-expr_logic3[which(expr_logic3$in_ell == FALSE),]
+expr_logic_PC3_4all[which(expr_logic_PC3_4all$in_ell == FALSE),]
 ```
 
 
@@ -563,7 +564,7 @@ PC3_4all +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
    scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
-  ggrepel::geom_text_repel(data = expr_logic3 %>% 
+  ggrepel::geom_text_repel(data = expr_logic_PC3_4all %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
                           aes(PC3, PC4, label=sub(".*\\|", "", heatmap_label)), 
@@ -580,7 +581,7 @@ PC3_4all +
 *Lets now repeat with the tau values*
 ```{r}
 # combine data frames expr_logic with tau values
-expr_logic_PC3_4 <- cbind(expr_logic3, tau_df$tau)
+expr_logic_PC3_4 <- cbind(expr_logic_PC3_4all, tau_df$tau)
 
 # Define the intervals for expr_logic2$tau
 expr_logic_PC3_4$tau_interval <- cut(expr_logic_PC3_4$tau, 
@@ -675,18 +676,18 @@ ell_TIR_PC1_2_7tissues <- as.data.frame(ell_points_PC1_2_7tissues$`AFB/TIR1`$`0.
 # Find which points are outside (!) the ellipse, and add this to the data
 library(sp)
 dat_TIR_PC1_2_7tissues <- data.frame(
-  points[2:3], 
-  in.ell_TIR = as.logical(point.in.polygon(points$x, points$y, ell_TIR_PC1_2_7tissues$x, ell_TIR_PC1_2_7tissues$y))
+  points_PC1_2_7tissues[2:3], 
+  in.ell_TIR = as.logical(point.in.polygon(points_PC1_2_7tissues$x, points_PC1_2_7tissues$y, ell_TIR_PC1_2_7tissues$x, ell_TIR_PC1_2_7tissues$y))
 )
 
 dat_IAA_PC1_2_7tissues <- data.frame(
-  points[2:3], 
-  in.ell_IAA = as.logical(point.in.polygon(points$x, points$y, ell_IAA_PC1_2_7tissues$x, ell_IAA_PC1_2_7tissues$y)) 
+  points_PC1_2_7tissues[2:3], 
+  in.ell_IAA = as.logical(point.in.polygon(points_PC1_2_7tissues$x, points_PC1_2_7tissues$y, ell_IAA_PC1_2_7tissues$x, ell_IAA_PC1_2_7tissues$y)) 
 ) 
 
 dat_ARF_PC1_2_7tissues <- data.frame(
-  points[2:3], 
-  in.ell_ARF = as.logical(point.in.polygon(points$x, points$y, ell_ARF_PC1_2_7tissues$x, ell_ARF_PC1_2_7tissues$y))
+  points_PC1_2_7tissues[2:3], 
+  in.ell_ARF = as.logical(point.in.polygon(points_PC1_2_7tissues$x, points_PC1_2_7tissues$y, ell_ARF_PC1_2_7tissues$x, ell_ARF_PC1_2_7tissues$y))
 )
 # as.logical(point..) equals to TRUE indicated points are inside ellipses
 
@@ -893,7 +894,7 @@ PC2_3_7tissues +
    scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
    labs(color = "Class") + 
   labs(color = "Class", alpha ="tau") + 
-  ylim(-7.5, 3) +
+  
   theme_bw()
 
 #ggsave("20240117_PC2_3_7Tissues.png", dpi = 1000, width = 10, height = 8)

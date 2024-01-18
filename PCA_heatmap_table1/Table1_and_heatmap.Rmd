@@ -1032,19 +1032,5 @@ We observe here the differences between our principal component analysis with al
 
 
 
-# add tau correlation to Geom distance from origin
-
-- Tau does provide some additional information
-- highlight some original candidates with high | low tau identified in PCA
-- family wise tau distribution: are ARFs or IAAs more tissue specific?
-
-- Discussion: 
-    - other means of calculating tau, or better suited datasets
-    - machine learning model of candidate genes
-    
-```{r}
-geom_dist_calc_df <- cbind(comb_pca_df, tau_df$tau)
-```
-
 
 

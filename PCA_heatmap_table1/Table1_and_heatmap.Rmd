@@ -1032,5 +1032,53 @@ We observe here the differences between our principal component analysis with al
 
 
 
+# add tau correlation to Geom distance from origin
+
+- Tau does provide some additional information
+- highlight some original candidates with high | low tau identified in PCA
+- family wise tau distribution: are ARFs or IAAs more tissue specific?
+
+- Discussion: 
+    - other means of calculating tau, or better suited datasets
+    - machine learning model of candidate genes
+    
+```{r}
+geom_dist_calc_df <- cbind(comb_pca_df, tau_df$tau)
+
+
+geom_dist_calc_df2 <- geom_dist_calc_df %>% dplyr::select(c(heatmap_label, Family, PC1, PC2, PC3, PC4, `tau_df$tau`))
+
+# square PC values
+geom_dist_calc_df2[,3:6] <- (geom_dist_calc_df2[, 3:6])^2
+
+# sum all PCs then take its square root
+geom_dist_calc_df2$Geom_dist <- NA
+
+
+for (i in 1:nrow(geom_dist_calc_df2)) {
+  geom_dist_calc_df2[i, 8] <- sum(geom_dist_calc_df2[i, 3:6], na.rm = TRUE)
+}
+
+geom_dist_calc_df2$Geom_Dist_sqrt <- 
+  sqrt(geom_dist_calc_df2$Geom_dist)
+
+library("ggpubr")
+
+
+ggscatter(geom_dist_calc_df2, x = "Geom_Dist_sqrt", 
+          y = "tau_df$tau", 
+         add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Geometric distance from origin", ylab = "tau")
+
+ggscatter(geom_dist_calc_df2, x = "Geom_Dist_sqrt", 
+          y = "tau_df$tau", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          color = "Family", 
+          xlab = "Geometric distance from origin", ylab = "tau")
+```
+
+From the correlation plots above we can see that there isn't a strong correlation between Geometric distance and and tau values, supporting the importance of tau values in this analysis. We believe a larger dataset may be important in order to in this calculations and we recommend that that should be pursued in future analysis.
 
 

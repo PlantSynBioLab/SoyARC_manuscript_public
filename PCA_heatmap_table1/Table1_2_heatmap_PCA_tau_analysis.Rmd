@@ -149,8 +149,8 @@ heatmap_df2
 tau_df <- read_csv("tau_df_contains_maximal_component_values.csv")
 
 # Write tau as table 2 for sharing in supplemental material
-tau_df %>% select(-c(Family, `Transcript ID`)) %>% 
-  rename("GeneID & Orthology" = heatmap_label)# %>% 
+tau_df %>% dplyr::select(-c(Family, `Transcript ID`)) %>% 
+  dplyr::rename("GeneID & Orthology" = heatmap_label)# %>% 
   # write_csv(., "Table2_tau_and_maximal_component_value.csv")
 ```
 
@@ -226,7 +226,7 @@ These genes are relatively lower in expression compared to the mean expression o
 
 # Principal component analysis
 Using the full data set in which data median expression was greater than 2.
-In our PCA we are not using the normalized data. That is beacause we are already transforming our data once by using scale = true, which is known to change the range of the data whereas normalized changes its shape distribution.
+In our PCA we are not using the normalized data. That is because we are already transforming our data once by using scale = true, which is known to change the range of the data whereas normalized changes its shape distribution.
 
 
 ```{r}
@@ -373,7 +373,35 @@ PC1_2all +
 
 # ggsave("20240117_PC1_2_allTissues.png", dpi = 1000, width = 10, height = 8)
 # ggsave("20240117_PC1_2_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+
+# How if we label all that has tau greater than 0.8
+
+PC1_2all + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC1*8.75), yend=(PC2*8.75)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC1*8.75), #add the tissue names to it manually
+             y=(PCA_loadings$PC2*8.75), 
+             label=PCA_loadings$Variables, size=4.5, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw() +
+  geom_point(data = expr_logic2 %>% as_tibble(rownames = "name"), 
+                                 aes(PC1, PC2, alpha = tau_interval, color = Family), size=2.5) +
+  ggrepel::geom_text_repel(data = expr_logic2 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(tau_interval != "< 0.5")), 
+                          aes(PC1, PC2, label=sub(".*\\|", "", heatmap_label), 
+                              alpha = tau_interval), 
+                        size=3.5, max.overlaps = 30,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+  
+  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  labs(color = "Class", shape = "tau", alpha ="tau") + 
+  theme_bw()
+
+# ggsave("20240119_PC1_2_allTissues_tau_GREATER-5.pdf", dpi = 1000, width = 10, height = 8)
 ```
+
 
 
 ### PC2 and PC3 outside ellipse labels for the 14 tissues
@@ -494,6 +522,33 @@ PC2_3all +
 
 # ggsave("20240117_PC2_3_allTissues.png", dpi = 1000, width = 10, height = 8)
 # ggsave("20240117_PC2_3_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+
+
+# Now with tau lables
+PC2_3all + 
+    geom_segment(PCA_loadings, mapping=aes(x=0, y=0, # Change the size of arrows 
+                                           xend=(PC2*8.75), yend=(PC3*8.75)), 
+                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+    annotate("text", x=(PCA_loadings$PC2*8.75), #add the tissue names to it manually
+             y=(PCA_loadings$PC3*8.75), 
+             label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
+    theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
+    theme_bw() +
+  geom_point(data = expr_logic_PC2_3 %>% as_tibble(rownames = "name"), 
+                                 aes(PC2, PC3, alpha = tau_interval, color = Family), 
+             size=3) +
+  ggrepel::geom_text_repel(data = expr_logic_PC2_3 %>% 
+                          as_tibble(rownames = "name") %>% 
+                          filter(as.logical(tau_interval == "> 0.8")), 
+                          aes(PC2, PC3, label=sub(".*\\|", "", heatmap_label), 
+                              alpha = tau_interval), 
+                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                        segment.curvature = -0.1) +
+  
+  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  labs(color = "Class", shape = "tau", alpha ="tau") + 
+  theme_bw()
+
 ```
 
 

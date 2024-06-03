@@ -4,6 +4,7 @@ author: "Deisiany"
 date: "2024-01-13"
 output:
   html_document: default
+  word_document: default
   pdf_document: default
 ---
 # Load libraries
@@ -21,7 +22,7 @@ data <- read_csv("Tau_133_genes_with_expression_across_tissues_are_greater_than_
 data <- data %>% select(-c(Class, Clade, expr_median))
 ```
 
-# Calculate the maximal component value
+# Calculate the component value
 X(^) = Xi/ max(Xi) for 1<=i <=n
 ```{r}
 # lets start by assigning our data to df
@@ -63,6 +64,95 @@ Here https://rdrr.io/github/roonysgalbi/tispec/f/vignettes/UserGuide.Rmd we can 
 https://academic.oup.com/bib/article/18/2/205/2562739?login=true 
 https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7791837/#CR75 
 
+# tau distribution for all 14 tissues
+```{r}
+tau_df <- read_csv( "tau_df_contains_maximal_component_values.csv")
+
+library(ggplot2)
+library(ggridges)
+library(dplyr)
+
+# Calculate medians
+medians <- tau_df %>% 
+  group_by(Family) %>% 
+  summarise(median_tau = median(tau))
+
+ggplot(tau_df, aes(x = tau, y = Family, fill = Family)) +
+  scale_fill_manual(values = c("#86C5D8", "#620093", "#E7C94C")) +
+  ggridges::geom_density_ridges() +
+  ggridges::stat_density_ridges(
+    quantile_lines = TRUE, 
+    quantiles = 2) +
+  coord_cartesian(ylim = c(1, length(unique(tau_df$Family)) + 1))
+
+```
+
+# statistical testing
+```{r}
+stats_tau <- tau_df %>% select(Family, tau)
+
+summary(stats_tau)
+
+
+library(doBy)
+summaryBy(tau ~ Family,
+          data = stats_tau,
+          FUN = median)
+
+ggplot(stats_tau) +
+  aes(x = Family, y = tau, fill = Family) +
+  geom_boxplot() +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("#86C5D8", "#620093", "#E7C94C")) +
+  theme_bw()
+
+```
+The null and alternative hypotheses of the Kruskal-Wallis test are:
+
+𝐻0: The 3 families are equal in terms of tau
+𝐻1: At least one Family is different from the other 2 Families in terms of tau
+
+# kruskal test 
+
+```{r}
+kruskal.test(tau ~ Family, data = stats_tau)
+```
+based on the kruskal test we reject the null hypothesis and conclude that at least one family is different in terms of tau values.
+
+# Post-hoc test
+```{r}
+pairwise.wilcox.test(stats_tau$tau, stats_tau$Family,
+  p.adjust.method = "holm"
+)
+```
+
+all 3 families are differ significantly in terms of tau, p<0.05
+
+```{r}
+# install newest version of ggplot2 and load all packages
+#library(remotes)
+# remotes::install_version("ggplot2", version = "3.5.1")
+#install.packages("ggstatsplot")
+library(ggplot2)
+library(ggstatsplot)
+
+ggstatsplot::ggbetweenstats(
+  data = stats_tau,
+  x = Family,
+  y = tau,
+  type = "nonparametric", # ANOVA or Kruskal-Wallis
+  plot.type = "box",
+  pairwise.comparisons = TRUE,
+  pairwise.display = "significant",
+  centrality.plotting = FALSE,
+  bf.message = FALSE) +
+  scale_color_manual(values = 
+                      c("#86C5D8", "#620093", "#E7C94C"))
+
+
+ggsave("Kruskal-test-tau-values.pdf", height = 5, width = 6)
+ggsave("Kruskal-test-tau-values.jpeg", height = 5, width = 6, dpi = 1000)
+```
 
 
 # repeat analysis removing tissues that were not used in our final analysis
@@ -97,6 +187,7 @@ tau_aerial_greater_80 <-
   tau_df_aerial_values[tau_df_aerial_values$tau >= 0.80, ]
 
 ```
+
 
 
 

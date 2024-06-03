@@ -1,0 +1,541 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+%
+\documentclass[
+]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{248,248,248}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{0.94,0.16,0.16}{#1}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\BuiltInTok}[1]{#1}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{0.64,0.00,0.00}{\textbf{#1}}}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\ImportTok}[1]{#1}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\usepackage{graphicx}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+% Set default figure placement to htbp
+\makeatletter
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\ifLuaTeX
+  \usepackage{selnolig}  % disable illegal ligatures
+\fi
+\IfFileExists{bookmark.sty}{\usepackage{bookmark}}{\usepackage{hyperref}}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={Tissue specificity index analysis - tau},
+  pdfauthor={Deisiany},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+
+\title{Tissue specificity index analysis - tau}
+\author{Deisiany}
+\date{2024-01-13}
+
+\begin{document}
+\maketitle
+
+\hypertarget{load-libraries}{%
+\section{Load libraries}\label{load-libraries}}
+
+\hypertarget{read-in-data}{%
+\section{read in data}\label{read-in-data}}
+
+For Tissue specificity index analysis - tau - we will use the 133 genes
+which had average expression across all tissues equal or greater than 2,
+and was used in our PCA analysis.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Load full genes}
+\NormalTok{data }\OtherTok{\textless{}{-}} \FunctionTok{read\_csv}\NormalTok{(}\StringTok{"Tau\_133\_genes\_with\_expression\_across\_tissues\_are\_greater\_than\_2\_SoyARCs.csv"}\NormalTok{) }
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Rows: 133 Columns: 20
+## -- Column specification --------------------------------------------------------
+## Delimiter: ","
+## chr  (5): Transcript ID, heatmap_label, Family, Class, Clade
+## dbl (15): AM, OF, IAM, IBM, RootTip, Cotyledon, Hypocotyl, SAM6D, SAM17D, SA...
+## 
+## i Use `spec()` to retrieve the full column specification for this data.
+## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{data }\OtherTok{\textless{}{-}}\NormalTok{ data }\SpecialCharTok{\%\textgreater{}\%} \FunctionTok{select}\NormalTok{(}\SpecialCharTok{{-}}\FunctionTok{c}\NormalTok{(Class, Clade, expr\_median))}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{calculate-the-component-value}{%
+\section{Calculate the component
+value}\label{calculate-the-component-value}}
+
+X(\^{}) = Xi/ max(Xi) for 1\textless=i \textless=n
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# lets start by assigning our data to df}
+\NormalTok{max\_component\_df }\OtherTok{\textless{}{-}}\NormalTok{ data}
+
+\ControlFlowTok{for}\NormalTok{ (Xi }\ControlFlowTok{in} \DecValTok{1}\SpecialCharTok{:}\FunctionTok{nrow}\NormalTok{(max\_component\_df)) \{}
+\NormalTok{  max\_component\_df[Xi, }\DecValTok{4}\SpecialCharTok{:}\DecValTok{17}\NormalTok{] }\OtherTok{\textless{}{-}}\NormalTok{ max\_component\_df[Xi, }\DecValTok{4}\SpecialCharTok{:}\DecValTok{17}\NormalTok{] }\SpecialCharTok{/} \FunctionTok{max}\NormalTok{(max\_component\_df[Xi, }\DecValTok{4}\SpecialCharTok{:}\DecValTok{17}\NormalTok{], }\AttributeTok{na.rm =} \ConstantTok{TRUE}\NormalTok{)}
+\NormalTok{\}}
+
+\NormalTok{max\_component\_df}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## # A tibble: 133 x 17
+##    `Transcript ID`   heatmap_label      Family     AM    OF   IAM    IBM RootTip
+##    <chr>             <chr>              <chr>   <dbl> <dbl> <dbl>  <dbl>   <dbl>
+##  1 Glyma.01G002100.1 Glyma.01G002100|G~ ARF    0.816  0.890 0.797 0.945   0.486 
+##  2 Glyma.01G019400.1 Glyma.01G019400|G~ IAA    0.382  0.718 0     0.140   0.349 
+##  3 Glyma.01G019400.2 Glyma.01G019400|G~ IAA    0.175  0     0.266 0.339   0.0983
+##  4 Glyma.01G019400.3 Glyma.01G019400|G~ IAA    0.254  0.404 0.234 0.301   0.182 
+##  5 Glyma.01G098000.3 Glyma.01G098000|G~ IAA    0.396  0.298 0.311 0.559   0.190 
+##  6 Glyma.01G103500.1 Glyma.01G103500|G~ ARF    0.694  0.214 0.420 0.839   0.146 
+##  7 Glyma.02G000500.1 Glyma.02G000500|G~ IAA    0.252  0.315 0.137 0.114   0.271 
+##  8 Glyma.02G065300.1 Glyma.02G065300|G~ AFB/T~ 0.522  0.424 0.506 0.772   0.251 
+##  9 Glyma.02G142500.3 Glyma.02G142500|G~ IAA    0.0277 1     0.138 0.0538  0.0816
+## 10 Glyma.02G142600.1 Glyma.02G142600|G~ IAA    0.0541 1     0.243 0.266   0.238 
+## # i 123 more rows
+## # i 9 more variables: Cotyledon <dbl>, Hypocotyl <dbl>, SAM6D <dbl>,
+## #   SAM17D <dbl>, SAM38D <dbl>, Callus <dbl>, Leaf <dbl>, Root <dbl>,
+## #   Nodule <dbl>
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Calculate Tau (Tissue Specificity Index) for each gene}
+\NormalTok{tau\_df }\OtherTok{\textless{}{-}}\NormalTok{ max\_component\_df}
+
+\NormalTok{tau\_df}\SpecialCharTok{$}\NormalTok{tau }\OtherTok{\textless{}{-}} \FunctionTok{numeric}\NormalTok{(}\FunctionTok{nrow}\NormalTok{(tau\_df))  }\CommentTok{\# Create an empty column}
+
+\ControlFlowTok{for}\NormalTok{ (i }\ControlFlowTok{in} \DecValTok{1}\SpecialCharTok{:}\FunctionTok{nrow}\NormalTok{(tau\_df)) \{}
+\NormalTok{  tau\_df}\SpecialCharTok{$}\NormalTok{tau[i] }\OtherTok{\textless{}{-}} \FunctionTok{sum}\NormalTok{(}\DecValTok{1} \SpecialCharTok{{-}}\NormalTok{ tau\_df[i, }\DecValTok{4}\SpecialCharTok{:}\DecValTok{17}\NormalTok{]) }\SpecialCharTok{/} \DecValTok{13}
+\NormalTok{\}}
+
+\CommentTok{\# write\_csv(tau\_df, "tau\_df\_contains\_maximal\_component\_values.csv")}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{(tau\_df\_values }\OtherTok{\textless{}{-}}\NormalTok{ tau\_df }\SpecialCharTok{\%\textgreater{}\%} \FunctionTok{select}\NormalTok{(}\StringTok{\textasciigrave{}}\AttributeTok{Transcript ID}\StringTok{\textasciigrave{}}\NormalTok{, heatmap\_label, tau))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## # A tibble: 133 x 3
+##    `Transcript ID`   heatmap_label                   tau
+##    <chr>             <chr>                         <dbl>
+##  1 Glyma.01G002100.1 Glyma.01G002100|GmARF7/19_F.1 0.376
+##  2 Glyma.01G019400.1 Glyma.01G019400|GmIAA8-9-B.1  0.615
+##  3 Glyma.01G019400.2 Glyma.01G019400|GmIAA8-9-B.2  0.796
+##  4 Glyma.01G019400.3 Glyma.01G019400|GmIAA8-9-B.3  0.800
+##  5 Glyma.01G098000.3 Glyma.01G098000|GmIAA8-9-D.3  0.643
+##  6 Glyma.01G103500.1 Glyma.01G103500|GmARF9_A.1    0.711
+##  7 Glyma.02G000500.1 Glyma.02G000500|GmIAA1-4-D.1  0.831
+##  8 Glyma.02G065300.1 Glyma.02G065300|GmAFB2/3_C.1  0.619
+##  9 Glyma.02G142500.3 Glyma.02G142500|GmIAA16-F.3   0.944
+## 10 Glyma.02G142600.1 Glyma.02G142600|GmIAA1-4-H.1  0.895
+## # i 123 more rows
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\#write\_csv(tau\_df\_values, "tau\_df\_values.csv")}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{tau-values-greater-than-.80-are-a-cut-off-utilized-in-the-literature-to-denote-tissues-specificity.}{%
+\section{tau values greater than .80 are a cut off utilized in the
+literature to denote tissues
+specificity.}\label{tau-values-greater-than-.80-are-a-cut-off-utilized-in-the-literature-to-denote-tissues-specificity.}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{tau\_greater\_80 }\OtherTok{\textless{}{-}}\NormalTok{ tau\_df\_values[tau\_df\_values}\SpecialCharTok{$}\NormalTok{tau }\SpecialCharTok{\textgreater{}=} \FloatTok{0.80}\NormalTok{, ]}
+
+\CommentTok{\#write\_csv(tau\_greater\_80, "tau\_greater\_80.csv")}
+\end{Highlighting}
+\end{Shaded}
+
+Here
+\url{https://rdrr.io/github/roonysgalbi/tispec/f/vignettes/UserGuide.Rmd}
+we can access some useful information about the tau measurement. And
+these papers also mention these same analysis:
+\url{https://academic.oup.com/bioinformatics/article/21/5/650/220059\#394030419}
+\url{https://academic.oup.com/bib/article/18/2/205/2562739?login=true}
+\url{https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7791837/\#CR75}
+
+\hypertarget{tau-distribution-for-all-14-tissues}{%
+\section{tau distribution for all 14
+tissues}\label{tau-distribution-for-all-14-tissues}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{tau\_df }\OtherTok{\textless{}{-}} \FunctionTok{read\_csv}\NormalTok{( }\StringTok{"tau\_df\_contains\_maximal\_component\_values.csv"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Rows: 133 Columns: 18
+## -- Column specification --------------------------------------------------------
+## Delimiter: ","
+## chr  (3): Transcript ID, heatmap_label, Family
+## dbl (15): AM, OF, IAM, IBM, RootTip, Cotyledon, Hypocotyl, SAM6D, SAM17D, SA...
+## 
+## i Use `spec()` to retrieve the full column specification for this data.
+## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(ggplot2)}
+\FunctionTok{library}\NormalTok{(ggridges)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'ggridges' was built under R version 4.3.2
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(dplyr)}
+
+\CommentTok{\# Calculate medians}
+\NormalTok{medians }\OtherTok{\textless{}{-}}\NormalTok{ tau\_df }\SpecialCharTok{\%\textgreater{}\%} 
+  \FunctionTok{group\_by}\NormalTok{(Family) }\SpecialCharTok{\%\textgreater{}\%} 
+  \FunctionTok{summarise}\NormalTok{(}\AttributeTok{median\_tau =} \FunctionTok{median}\NormalTok{(tau))}
+
+\FunctionTok{ggplot}\NormalTok{(tau\_df, }\FunctionTok{aes}\NormalTok{(}\AttributeTok{x =}\NormalTok{ tau, }\AttributeTok{y =}\NormalTok{ Family, }\AttributeTok{fill =}\NormalTok{ Family)) }\SpecialCharTok{+}
+  \FunctionTok{scale\_fill\_manual}\NormalTok{(}\AttributeTok{values =} \FunctionTok{c}\NormalTok{(}\StringTok{"\#86C5D8"}\NormalTok{, }\StringTok{"\#620093"}\NormalTok{, }\StringTok{"\#E7C94C"}\NormalTok{)) }\SpecialCharTok{+}
+\NormalTok{  ggridges}\SpecialCharTok{::}\FunctionTok{geom\_density\_ridges}\NormalTok{() }\SpecialCharTok{+}
+\NormalTok{  ggridges}\SpecialCharTok{::}\FunctionTok{stat\_density\_ridges}\NormalTok{(}
+    \AttributeTok{quantile\_lines =} \ConstantTok{TRUE}\NormalTok{, }
+    \AttributeTok{quantiles =} \DecValTok{2}\NormalTok{) }\SpecialCharTok{+}
+  \FunctionTok{coord\_cartesian}\NormalTok{(}\AttributeTok{ylim =} \FunctionTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{, }\FunctionTok{length}\NormalTok{(}\FunctionTok{unique}\NormalTok{(tau\_df}\SpecialCharTok{$}\NormalTok{Family)) }\SpecialCharTok{+} \DecValTok{1}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Picking joint bandwidth of 0.0518
+## Picking joint bandwidth of 0.0518
+\end{verbatim}
+
+\includegraphics{tau_files/figure-latex/unnamed-chunk-5-1.pdf}
+
+\hypertarget{statistical-testing}{%
+\section{statistical testing}\label{statistical-testing}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{stats\_tau }\OtherTok{\textless{}{-}}\NormalTok{ tau\_df }\SpecialCharTok{\%\textgreater{}\%} \FunctionTok{select}\NormalTok{(Family, tau)}
+
+\FunctionTok{summary}\NormalTok{(stats\_tau)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##     Family               tau        
+##  Length:133         Min.   :0.3506  
+##  Class :character   1st Qu.:0.5807  
+##  Mode  :character   Median :0.6743  
+##                     Mean   :0.6828  
+##                     3rd Qu.:0.7964  
+##                     Max.   :0.9559
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(doBy)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'doBy' was built under R version 4.3.2
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'doBy'
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from 'package:dplyr':
+## 
+##     order_by
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{summaryBy}\NormalTok{(tau }\SpecialCharTok{\textasciitilde{}}\NormalTok{ Family,}
+          \AttributeTok{data =}\NormalTok{ stats\_tau,}
+          \AttributeTok{FUN =}\NormalTok{ median)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## # A tibble: 3 x 2
+##   Family   tau.median
+##   <chr>         <dbl>
+## 1 AFB/TIR1      0.568
+## 2 ARF           0.640
+## 3 IAA           0.796
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{ggplot}\NormalTok{(stats\_tau) }\SpecialCharTok{+}
+  \FunctionTok{aes}\NormalTok{(}\AttributeTok{x =}\NormalTok{ Family, }\AttributeTok{y =}\NormalTok{ tau, }\AttributeTok{fill =}\NormalTok{ Family) }\SpecialCharTok{+}
+  \FunctionTok{geom\_boxplot}\NormalTok{() }\SpecialCharTok{+}
+  \FunctionTok{theme}\NormalTok{(}\AttributeTok{legend.position =} \StringTok{"none"}\NormalTok{) }\SpecialCharTok{+}
+  \FunctionTok{scale\_fill\_manual}\NormalTok{(}\AttributeTok{values =} \FunctionTok{c}\NormalTok{(}\StringTok{"\#86C5D8"}\NormalTok{, }\StringTok{"\#620093"}\NormalTok{, }\StringTok{"\#E7C94C"}\NormalTok{)) }\SpecialCharTok{+}
+  \FunctionTok{theme\_bw}\NormalTok{()}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{tau_files/figure-latex/unnamed-chunk-6-1.pdf} The null
+and alternative hypotheses of the Kruskal-Wallis test are:
+
+𝐻0: The 3 families are equal in terms of tau 𝐻1: At least one Family is
+different from the other 2 Families in terms of tau
+
+\hypertarget{kruskal-test}{%
+\section{kruskal test}\label{kruskal-test}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{kruskal.test}\NormalTok{(tau }\SpecialCharTok{\textasciitilde{}}\NormalTok{ Family, }\AttributeTok{data =}\NormalTok{ stats\_tau)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## 
+##  Kruskal-Wallis rank sum test
+## 
+## data:  tau by Family
+## Kruskal-Wallis chi-squared = 32.403, df = 2, p-value = 9.201e-08
+\end{verbatim}
+
+based on the kruskal test we reject the null hypothesis and conclude
+that at least one family is different in terms of tau values.
+
+\hypertarget{post-hoc-test}{%
+\section{Post-hoc test}\label{post-hoc-test}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{pairwise.wilcox.test}\NormalTok{(stats\_tau}\SpecialCharTok{$}\NormalTok{tau, stats\_tau}\SpecialCharTok{$}\NormalTok{Family,}
+  \AttributeTok{p.adjust.method =} \StringTok{"holm"}
+\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## 
+##  Pairwise comparisons using Wilcoxon rank sum test with continuity correction 
+## 
+## data:  stats_tau$tau and stats_tau$Family 
+## 
+##     AFB/TIR1 ARF    
+## ARF 0.0042   -      
+## IAA 1.1e-05  3.2e-05
+## 
+## P value adjustment method: holm
+\end{verbatim}
+
+all 3 families are differ significantly in terms of tau, p\textless0.05
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# install newest version of ggplot2 and load all packages}
+\CommentTok{\#library(remotes)}
+\CommentTok{\# remotes::install\_version("ggplot2", version = "3.5.1")}
+\CommentTok{\#install.packages("ggstatsplot")}
+\FunctionTok{library}\NormalTok{(ggplot2)}
+\FunctionTok{library}\NormalTok{(ggstatsplot)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'ggstatsplot' was built under R version 4.3.2
+\end{verbatim}
+
+\begin{verbatim}
+## You can cite this package as:
+##      Patil, I. (2021). Visualizations with statistical details: The 'ggstatsplot' approach.
+##      Journal of Open Source Software, 6(61), 3167, doi:10.21105/joss.03167
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{ggstatsplot}\SpecialCharTok{::}\FunctionTok{ggbetweenstats}\NormalTok{(}
+  \AttributeTok{data =}\NormalTok{ stats\_tau,}
+  \AttributeTok{x =}\NormalTok{ Family,}
+  \AttributeTok{y =}\NormalTok{ tau,}
+  \AttributeTok{type =} \StringTok{"nonparametric"}\NormalTok{, }\CommentTok{\# ANOVA or Kruskal{-}Wallis}
+  \AttributeTok{plot.type =} \StringTok{"box"}\NormalTok{,}
+  \AttributeTok{pairwise.comparisons =} \ConstantTok{TRUE}\NormalTok{,}
+  \AttributeTok{pairwise.display =} \StringTok{"significant"}\NormalTok{,}
+  \AttributeTok{centrality.plotting =} \ConstantTok{FALSE}\NormalTok{,}
+  \AttributeTok{bf.message =} \ConstantTok{FALSE}\NormalTok{) }\SpecialCharTok{+}
+  \FunctionTok{scale\_color\_manual}\NormalTok{(}\AttributeTok{values =} 
+                      \FunctionTok{c}\NormalTok{(}\StringTok{"\#86C5D8"}\NormalTok{, }\StringTok{"\#620093"}\NormalTok{, }\StringTok{"\#E7C94C"}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Scale for colour is already present.
+## Adding another scale for colour, which will replace the existing scale.
+\end{verbatim}
+
+\includegraphics{tau_files/figure-latex/unnamed-chunk-9-1.pdf}
+
+\hypertarget{repeat-analysis-removing-tissues-that-were-not-used-in-our-final-analysis}{%
+\section{repeat analysis removing tissues that were not used in our
+final
+analysis}\label{repeat-analysis-removing-tissues-that-were-not-used-in-our-final-analysis}}
+
+Roots, callus, Inflorescence and so on, were not taken into account in
+our final analysis. Thus, lets repeat this without this tissues.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# lets start by assigning our data to df}
+\NormalTok{max\_component\_df\_aerial }\OtherTok{\textless{}{-}}\NormalTok{ data }\SpecialCharTok{\%\textgreater{}\%} 
+  \FunctionTok{select}\NormalTok{(}\StringTok{\textasciigrave{}}\AttributeTok{Transcript ID}\StringTok{\textasciigrave{}}\NormalTok{, heatmap\_label, SAM6D, SAM17D, SAM38D, AM, Cotyledon, Leaf, Hypocotyl)}
+
+\ControlFlowTok{for}\NormalTok{ (Xi }\ControlFlowTok{in} \DecValTok{1}\SpecialCharTok{:}\FunctionTok{nrow}\NormalTok{(max\_component\_df\_aerial)) \{}
+\NormalTok{  max\_component\_df\_aerial[Xi, }\DecValTok{3}\SpecialCharTok{:}\DecValTok{9}\NormalTok{] }\OtherTok{\textless{}{-}}\NormalTok{ max\_component\_df\_aerial[Xi, }\DecValTok{3}\SpecialCharTok{:}\DecValTok{9}\NormalTok{] }\SpecialCharTok{/} \FunctionTok{max}\NormalTok{(max\_component\_df\_aerial[Xi, }\DecValTok{3}\SpecialCharTok{:}\DecValTok{9}\NormalTok{], }\AttributeTok{na.rm =} \ConstantTok{TRUE}\NormalTok{)}
+\NormalTok{\}}
+
+\NormalTok{max\_component\_df\_aerial}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## # A tibble: 133 x 9
+##    `Transcript ID`   heatmap_label    SAM6D SAM17D SAM38D    AM Cotyledon   Leaf
+##    <chr>             <chr>            <dbl>  <dbl>  <dbl> <dbl>     <dbl>  <dbl>
+##  1 Glyma.01G002100.1 Glyma.01G00210~ 0.718  0.650  0.461  0.816   0.505   0.392 
+##  2 Glyma.01G019400.1 Glyma.01G01940~ 0.283  0.747  0.327  0.382   0.0952  1     
+##  3 Glyma.01G019400.2 Glyma.01G01940~ 0.795  0      0.211  0.334   0.177   1     
+##  4 Glyma.01G019400.3 Glyma.01G01940~ 0.283  0.299  0.328  0.254   0.0454  0.0695
+##  5 Glyma.01G098000.3 Glyma.01G09800~ 0.590  0.628  0.334  0.396   0.455   0.419 
+##  6 Glyma.01G103500.1 Glyma.01G10350~ 0.790  1      0.488  0.694   0.0621  0     
+##  7 Glyma.02G000500.1 Glyma.02G00050~ 0.220  0.215  0.415  0.252   0.0604  0.0656
+##  8 Glyma.02G065300.1 Glyma.02G06530~ 0.859  1      0.430  0.522   0.0816  0.148 
+##  9 Glyma.02G142500.3 Glyma.02G14250~ 0.0641 0.0579 0.0650 0.128   0.00176 0.179 
+## 10 Glyma.02G142600.1 Glyma.02G14260~ 0.220  0.352  0.130  0.321   0.436   0.541 
+## # i 123 more rows
+## # i 1 more variable: Hypocotyl <dbl>
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Calculate Tau (Tissue Specificity Index) for each gene}
+\NormalTok{tau\_df\_aerial }\OtherTok{\textless{}{-}}\NormalTok{ max\_component\_df\_aerial}
+
+\NormalTok{tau\_df\_aerial}\SpecialCharTok{$}\NormalTok{tau }\OtherTok{\textless{}{-}} \FunctionTok{numeric}\NormalTok{(}\FunctionTok{nrow}\NormalTok{(tau\_df\_aerial))  }\CommentTok{\# Create an empty column}
+
+\ControlFlowTok{for}\NormalTok{ (i }\ControlFlowTok{in} \DecValTok{1}\SpecialCharTok{:}\FunctionTok{nrow}\NormalTok{(tau\_df\_aerial)) \{}
+\NormalTok{  tau\_df\_aerial}\SpecialCharTok{$}\NormalTok{tau[i] }\OtherTok{\textless{}{-}} \FunctionTok{sum}\NormalTok{(}\DecValTok{1} \SpecialCharTok{{-}}\NormalTok{ tau\_df\_aerial[i, }\DecValTok{3}\SpecialCharTok{:}\DecValTok{9}\NormalTok{]) }\SpecialCharTok{/} \DecValTok{6}
+\NormalTok{\}}
+
+\CommentTok{\#write\_csv(tau\_df\_aerial, "tau\_df\_values\_aerial\_tissues.csv")}
+
+\NormalTok{tau\_df\_aerial\_values }\OtherTok{\textless{}{-}}\NormalTok{ tau\_df\_aerial }\SpecialCharTok{\%\textgreater{}\%} \FunctionTok{select}\NormalTok{(}\StringTok{\textasciigrave{}}\AttributeTok{Transcript ID}\StringTok{\textasciigrave{}}\NormalTok{, heatmap\_label, tau)}
+
+\CommentTok{\# Now lets select values greater than 80 again}
+\NormalTok{tau\_aerial\_greater\_80 }\OtherTok{\textless{}{-}} 
+\NormalTok{  tau\_df\_aerial\_values[tau\_df\_aerial\_values}\SpecialCharTok{$}\NormalTok{tau }\SpecialCharTok{\textgreater{}=} \FloatTok{0.80}\NormalTok{, ]}
+\end{Highlighting}
+\end{Shaded}
+
+
+\end{document}

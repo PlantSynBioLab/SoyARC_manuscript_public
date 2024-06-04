@@ -3,9 +3,9 @@ title: "Tissue specificity index analysis - tau"
 author: "Deisiany"
 date: "2024-01-13"
 output:
-  html_document: default
-  word_document: default
   pdf_document: default
+  word_document: default
+  html_document: default
 ---
 # Load libraries
 ```{r setup, include=FALSE}
@@ -140,11 +140,12 @@ ggstatsplot::ggbetweenstats(
   data = stats_tau,
   x = Family,
   y = tau,
-  type = "nonparametric", # ANOVA or Kruskal-Wallis
+  type = "nonparametric", #  Kruskal-Wallis
   plot.type = "box",
+  # centrality.type = "nonparametric", #if using median values
   pairwise.comparisons = TRUE,
   pairwise.display = "significant",
-  centrality.plotting = FALSE,
+  centrality.plotting = FALSE, 
   bf.message = FALSE) +
   scale_color_manual(values = 
                       c("#86C5D8", "#620093", "#E7C94C"))

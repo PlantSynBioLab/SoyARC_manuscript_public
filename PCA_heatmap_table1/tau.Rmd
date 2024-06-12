@@ -68,6 +68,7 @@ https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7791837/#CR75
 ```{r}
 tau_df <- read_csv( "tau_df_contains_maximal_component_values.csv")
 
+
 library(ggplot2)
 library(ggridges)
 library(dplyr)
@@ -136,6 +137,8 @@ all 3 families are differ significantly in terms of tau, p<0.05
 library(ggplot2)
 library(ggstatsplot)
 
+stats_tau$Family[stats_tau$Family == "AFB/TIR1"] <- "TIR1/AFB"
+
 ggstatsplot::ggbetweenstats(
   data = stats_tau,
   x = Family,
@@ -151,10 +154,58 @@ ggstatsplot::ggbetweenstats(
                       c("#86C5D8", "#620093", "#E7C94C"))
 
 
+
+
 ggsave("Kruskal-test-tau-values.pdf", height = 5, width = 6)
 ggsave("Kruskal-test-tau-values.jpeg", height = 5, width = 6, dpi = 1000)
 ```
 
+
+# Repeat analysis and order according to p-value
+```{r}
+# Load necessary packages
+library(dplyr)
+library(rstatix)
+library(ggstatsplot)
+
+# Compute pairwise comparisons using Wilcoxon test
+pairwise_results <- stats_tau %>%
+  pairwise_wilcox_test(tau ~ Family, p.adjust.method = "BH")
+
+# Order the families based on the p-values of pairwise comparisons
+# Assuming you want to order by the most significant difference
+significant_order <- pairwise_results %>%
+  arrange(p) %>%
+  select(group1, group2) %>%
+  unique() %>%
+  unlist() %>%
+  unique()
+
+# Reverse the order to ensure it goes from left to right
+significant_order <- rev(significant_order)
+
+# Convert Family to a factor with levels in the desired order
+stats_tau <- stats_tau %>%
+  mutate(Family = factor(Family, levels = significant_order))
+
+
+ggstatsplot::ggbetweenstats(
+  data = stats_tau,
+  x = Family,
+  y = tau,
+  type = "nonparametric",          # Kruskal-Wallis
+  plot.type = "box",
+  centrality.plotting = FALSE,
+  pairwise.comparisons = TRUE,
+  pairwise.display = "significant",
+  bf.message = FALSE
+) +
+  scale_color_manual(values = c("#86C5D8", "#620093", "#E7C94C"))
+
+
+ggsave("Kruskal-test-tau-values.pdf", height = 5, width = 6)
+ggsave("Kruskal-test-tau-values.jpeg", height = 5, width = 6, dpi = 1000)
+```
 
 # repeat analysis removing tissues that were not used in our final analysis
 Roots, callus, Inflorescence and so on, were not taken into account in our final analysis. Thus, lets repeat this without this tissues.

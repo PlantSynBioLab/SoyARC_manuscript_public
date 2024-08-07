@@ -207,7 +207,7 @@ pheatmap::pheatmap(mat = Expr_data_Norm[,5:18],  annotation_row = Expr_data_Norm
          # main = "Expression analysis - normalized by transcripts",
         color = c("grey80", "white", "mistyrose2", "lightpink", "lightblue", "turquoise", "lightslateblue")))
 
-save_pheatmap_pdf(expr_analysis, "20230926_FINAL_NORM_by_Transcript.pdf", height = 12, width = 9)
+# save_pheatmap_pdf(expr_analysis, "20230926_FINAL_NORM_by_Transcript.pdf", height = 12, width = 9)
 
 ```
 
@@ -239,7 +239,7 @@ summary(pca)
 
 factoextra::fviz_eig(pca, main = "Principal component variances of the 14 tissues")
 
-# ggsave("20230927_PCscreePlot_allTissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20240807_PCscreePlot_allTissues.png", dpi = 1000, width = 10, height = 8)
 
 ```
 
@@ -323,7 +323,8 @@ PC1_2all +
              label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
-   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+   scale_color_manual(values=c("blue2", "#620093", "#E7C94C"))+
+  scale_alpha_discrete(name = waiver(), range = c(0.4, 1)) +
   ggrepel::geom_text_repel(data = expr_logic %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
@@ -333,8 +334,8 @@ PC1_2all +
   labs(color = "Class") + 
   theme_bw()
 
-# ggsave("20230927_PC1_2_allTissues.png", dpi = 1000, width = 10, height = 8)
-# ggsave("20230927_PC1_2_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+ ggsave("20240807_PC1_2_allTissues.png", dpi = 1000, width = 10, height = 8)
+ ggsave("20240807_PC1_2_allTissues.pdf", dpi = 1000, width = 10, height = 8)
 
 ```
 
@@ -367,12 +368,13 @@ PC1_2all +
                         size=3, max.overlaps = 100,  min.segment.length = 0, 
                         segment.curvature = -0.1) +
   
-  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  scale_color_manual(values=c("blue2", "#620093", "#E7C94C"))+
+  scale_alpha_discrete(name = waiver(), range = c(0.4, 1)) +
   labs(color = "Class", shape = "tau", alpha ="tau") + 
   theme_bw()
 
-# ggsave("20240117_PC1_2_allTissues.png", dpi = 1000, width = 10, height = 8)
-# ggsave("20240117_PC1_2_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+ ggsave("20240807_PC1_2_allTissues.png", dpi = 1000, width = 10, height = 8)
+ ggsave("20240807_PC1_2_allTissues.pdf", dpi = 1000, width = 10, height = 8)
 
 # How if we label all that has tau greater than 0.8
 
@@ -395,11 +397,12 @@ PC1_2all +
                         size=3.5, max.overlaps = 30,  min.segment.length = 0, 
                         segment.curvature = -0.1) +
   
-  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  scale_color_manual(values=c("blue2", "#620093", "#E7C94C"))+
+  scale_alpha_discrete(name = waiver(), range = c(0.4, 1)) +
   labs(color = "Class", shape = "tau", alpha ="tau") + 
   theme_bw()
 
-# ggsave("20240119_PC1_2_allTissues_tau_GREATER-5.pdf", dpi = 1000, width = 10, height = 8)
+ ggsave("20240807_PC1_2_allTissues_tau_GREATER-5.pdf", dpi = 1000, width = 10, height = 8)
 ```
 
 
@@ -470,7 +473,8 @@ PC2_3all +
              label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
-   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+   scale_color_manual(values=c("blue2", "#620093", "#E7C94C"))+
+  scale_alpha_discrete(name = waiver(), range = c(0.4, 1)) +
    ggrepel::geom_text_repel(data = expr_logic_PC2_3all %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
@@ -480,8 +484,8 @@ PC2_3all +
   labs(color = "Class") + 
   theme_bw()
   
-# ggsave("20230927_PC2_3_allTissues.png", dpi = 1000, width = 10, height = 8)
-# ggsave("20230927_PC2_3_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+ ggsave("20240807_PC2_3_allTissues.png", dpi = 1000, width = 10, height = 8)
+ ggsave("20240807_PC2_3_allTissues.pdf", dpi = 1000, width = 10, height = 8)
 ```
 
 *Lets now repeat with the tau values*
@@ -516,12 +520,13 @@ PC2_3all +
                         size=3, max.overlaps = 100,  min.segment.length = 0, 
                         segment.curvature = -0.1) +
   
-  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  scale_color_manual(values=c("blue2", "#620093", "#E7C94C"))+
+  scale_alpha_discrete(name = waiver(), range = c(0.4, 1)) +
   labs(color = "Class", shape = "tau", alpha ="tau") + 
   theme_bw()
 
-# ggsave("20240117_PC2_3_allTissues.png", dpi = 1000, width = 10, height = 8)
-# ggsave("20240117_PC2_3_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+ ggsave("20240807_PC2_3_allTissues.png", dpi = 1000, width = 10, height = 8)
+ ggsave("20240807_PC2_3_allTissues.pdf", dpi = 1000, width = 10, height = 8)
 
 
 # Now with tau lables
@@ -545,7 +550,8 @@ PC2_3all +
                         size=3, max.overlaps = 100,  min.segment.length = 0, 
                         segment.curvature = -0.1) +
   
-  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  scale_color_manual(values=c("blue2", "#620093", "#E7C94C"))+
+  scale_alpha_discrete(name = waiver(), range = c(0.4, 1)) +
   labs(color = "Class", shape = "tau", alpha ="tau") + 
   theme_bw()
 
@@ -618,18 +624,20 @@ PC3_4all +
              label=PCA_loadings$Variables, size=4, color="gray60", fontface="bold") +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
-   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+ 
+  
   ggrepel::geom_text_repel(data = expr_logic_PC3_4all %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
                           aes(PC3, PC4, label=sub(".*\\|", "", heatmap_label)), 
                         size=3, max.overlaps = 100,  min.segment.length = 0, 
                         segment.curvature = -0.1) +
+   scale_color_manual(values=c("blue2", "#620093", "#E7C94C")) +   scale_alpha_discrete(name = waiver(), range = c(0.45, 1)) + 
    labs(color = "Class") + 
   theme_bw()
 
-#ggsave("20230927_PC3_4_allTissues.png", dpi = 1000, width = 10, height = 8)
-#ggsave("20230927_PC3_4_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC3_4_allTissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC3_4_allTissues.pdf", dpi = 1000, width = 10, height = 8)
 
 ```
 
@@ -665,12 +673,13 @@ PC3_4all +
                         size=3, max.overlaps = 100,  min.segment.length = 0, 
                         segment.curvature = -0.1) +
   
-  scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C"))+
+  scale_color_manual(values=c("blue2", "#620093", "#E7C94C"))+
+  scale_alpha_discrete(name = waiver(), range = c(0.4, 1)) +
   labs(color = "Class", shape = "tau", alpha ="tau") + 
   theme_bw()
 
-#ggsave("20240117_PC3_4_allTissues.png", dpi = 1000, width = 10, height = 8)
-#ggsave("20240117_PC3_4_allTissues.pdf", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC3_4_allTissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC3_4_allTissues.pdf", dpi = 1000, width = 10, height = 8)
 ```
 
 
@@ -683,7 +692,7 @@ summary(pca2)
 
 
 factoextra::fviz_eig(pca2, main = "Principal components variance for the 7 tissues")
-# ggsave("20230927_PCscreePlot_7Tissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20240807_PCscreePlot_7Tissues.png", dpi = 1000, width = 10, height = 8)
 
 ```
 
@@ -775,7 +784,8 @@ ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(1, 2),
              label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
-   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+   scale_color_manual(values=c("blue2", "#620093", "#E7C94C"))+
+   scale_alpha_discrete(name = waiver(), range = c(0.45, 1)) + 
   ggrepel::geom_text_repel(data = expr_logical_PC1_2_7tissues %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
@@ -785,8 +795,8 @@ ggbiplot::ggbiplot(pca2, obs.scale = 1, var.scale = .5, choices = c(1, 2),
    labs(color = "Class") + 
   theme_bw()
 
-#ggsave("20230927_PC1_2_7Tissues.png", dpi = 1000, width = 10, height = 8)
-#ggsave("20230927_PC1_2_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC1_2_7Tissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC1_2_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
 ```
 
 *Lets now repeat with the tau values for 7 tissues kept*
@@ -796,37 +806,45 @@ expr_logic_PC1_2_7tissues <- cbind(expr_logical_PC1_2_7tissues, tau_df$tau)
 
 # Define the intervals for expr_logic2$tau
 expr_logic_PC1_2_7tissues$tau_interval <- cut(expr_logic_PC1_2_7tissues$tau, 
-                                breaks = c(-Inf, 0.5, 0.8, Inf), 
+                                breaks = c(0, 0.5, 0.8, 1), 
                                 labels = c("< 0.5", "0.5 - 0.79", "> 0.8"))
 
 PC1_2_7tissues + 
     geom_segment(PCA_loadings2, mapping=aes(x=0, y=0, # Change the size of arrows 
-                                           xend=(PC1*8.75), yend=(PC2*8.75)), 
-                 arrow = arrow(length = unit(1/2, "picas")), color="gray60") +
+                                           xend=(PC1*8.75), 
+                                           yend=(PC2*8.75)), 
+                 arrow = arrow(length = unit(1/2, "picas")), 
+                 color="gray60") +
     annotate("text", x=(PCA_loadings2$PC1*8.75), #add the tissue names to it manually
              y=(PCA_loadings2$PC2*8.75), 
              label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
     theme(panel.background = element_rect(fill = "white", linewidth = 1)) + 
   
-  geom_point(data = expr_logic_PC1_2_7tissues %>% as_tibble(rownames = "name"), 
-                                 aes(PC1, PC2, alpha = tau_interval, color = Family), 
+  geom_point(data = expr_logic_PC1_2_7tissues %>% 
+               as_tibble(rownames = "name"), 
+                                 aes(PC1, PC2, 
+                                     alpha = tau_interval, 
+                                     color = Family), 
              size=3) +
+  
   ggrepel::geom_text_repel(data = expr_logic_PC1_2_7tissues %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
-                          aes(PC1, PC2, label=sub(".*\\|", "", heatmap_label),
-                              alpha=tau_interval), 
-                        size=3, max.overlaps = 100,  min.segment.length = 0, 
+                          aes(PC1, PC2, label=sub(".*\\|", "",
+                                                  heatmap_label),
+                              alpha = tau_interval),
+                          
+                        size=3, max.overlaps = 200,  min.segment.length = 0, 
                         segment.curvature = -0.1) + 
   
-   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
-   labs(color = "Class") + 
-  labs(color = "Class", alpha ="tau") + 
-  ylim(-7.5, 3) +
+   scale_color_manual(values=c("blue2", "#620093", "#E7C94C")) +
+  scale_alpha_discrete(name = waiver(), range = c(0.46, 1)) +
+  labs(color = "Class", alpha = "tau", ) + 
+  ylim(-7.5, 3) + 
   theme_bw()
 
-#ggsave("20240117_PC1_2_7Tissues.png", dpi = 1000, width = 10, height = 8)
-#ggsave("20240117_PC1_2_7Tissues.pdf", dpi = 1000, width = 10, height = 8)  
+ggsave("20240807_PC1_2_7Tissues-tau.png", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC1_2_7Tissues-tau.pdf", dpi = 1000, width = 10, height = 8)  
 
 ```
 
@@ -899,7 +917,7 @@ PC2_3_7tissues +
              label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
-   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+   scale_color_manual(values=c("blue2", "#620093", "#E7C94C")) +   scale_alpha_discrete(name = waiver(), range = c(0.45, 1)) + 
   ggrepel::geom_text_repel(data = expr_logical_PC2_3_7tissues %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
@@ -909,8 +927,8 @@ PC2_3_7tissues +
    labs(color = "Class") + 
   theme_bw()
 
-# ggsave("20230927_PC2_3_7Tissues.png", dpi = 1000, width = 10, height = 8)
-# ggsave("20230927_PC2_3_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+# ggsave("20240807_PC2_3_7Tissues.png", dpi = 1000, width = 10, height = 8)
+# ggsave("20240807_PC2_3_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
 
 ```
 
@@ -946,14 +964,14 @@ PC2_3_7tissues +
                         size=3, max.overlaps = 100,  min.segment.length = 0, 
                         segment.curvature = -0.1) + 
   
-   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+   scale_color_manual(values=c("blue2", "#620093", "#E7C94C")) +  scale_alpha_discrete(name = waiver(), range = c(0.45, 1)) + 
    labs(color = "Class") + 
   labs(color = "Class", alpha ="tau") + 
   
   theme_bw()
 
-#ggsave("20240117_PC2_3_7Tissues.png", dpi = 1000, width = 10, height = 8)
-#ggsave("20240117_PC2_3_7Tissues.pdf", dpi = 1000, width = 10, height = 8)  
+ggsave("20240807_PC2_3_7Tissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC2_3_7Tissues.pdf", dpi = 1000, width = 10, height = 8)  
 
 ```
 
@@ -1025,7 +1043,7 @@ PC3_4_7tissues +
              label=PCA_loadings2$Variables, size=4, color="gray60", fontface="bold") +
     theme(panel.background = element_rect(fill = "white", linewidth = 1))+ 
     theme_bw()+
-   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+   scale_color_manual(values=c("blue2", "#620093", "#E7C94C")) +   scale_alpha_discrete(name = waiver(), range = c(0.45, 1)) + 
   ggrepel::geom_text_repel(data = expr_logical_PC3_4_7tissues %>% 
                           as_tibble(rownames = "name") %>% 
                           filter(as.logical(in_ell == FALSE)), 
@@ -1036,8 +1054,8 @@ PC3_4_7tissues +
   theme_bw()
 
 
-#ggsave("20230927_PC3_4_7Tissues.png", dpi = 1000, width = 10, height = 8)
-#ggsave("20230927_PC3_4_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+#ggsave("20240807_PC3_4_7Tissues.png", dpi = 1000, width = 10, height = 8)
+#ggsave("20240807_PC3_4_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
 ```
 *Repeat the same to add tau measurement*
 ```{r}
@@ -1071,13 +1089,13 @@ PC3_4_7tissues +
    geom_point(data = expr_logical_PC3_4_7tissues %>% as_tibble(rownames = "name"), 
                                  aes(PC3, PC4, alpha = tau_interval, color = Family), 
              size=3) +
-   scale_color_manual(values=c("#86C5D8", "#620093", "#E7C94C")) +
+   scale_color_manual(values=c("blue2", "#620093", "#E7C94C")) +  scale_alpha_discrete(name = waiver(), range = c(0.45, 1)) + 
    labs(color = "Class") + 
   labs(color = "Class", alpha ="tau") + 
   theme_bw()
 
-#ggsave("20240117_PC3_4_7Tissues.png", dpi = 1000, width = 10, height = 8)
-#ggsave("20240117_PC3_4_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC3_4_7Tissues.png", dpi = 1000, width = 10, height = 8)
+ggsave("20240807_PC3_4_7Tissues.pdf", dpi = 1000, width = 10, height = 8)
 ```
 
 # Principal component comparisons.
